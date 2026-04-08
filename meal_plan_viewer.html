@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Meal Plan</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--acc:#b07d4a;--acl:#fff8f0;--acb:#e8d9c0;--grn:#2e7d32;--gnb:#d4edda;--red:#c0392b;--brd:#e8e2d9;--bg:#faf8f5;--wht:#fff;--txt:#1a1a1a;--mut:#888;--hnt:#bbb}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;padding-bottom:70px}
+header{background:var(--wht);border-bottom:1px solid var(--brd);padding:12px 14px;position:sticky;top:0;z-index:100}
+.hrow{display:flex;align-items:center;gap:8px}
+h1{font-size:.95rem;font-weight:600;flex:1;line-height:1.3}
+.wsel{font-size:.75rem;padding:4px 6px;border:1.5px solid var(--brd);border-radius:8px;background:var(--wht);color:#555;max-width:150px}
+.hsub{font-size:.72rem;color:var(--mut);margin-top:2px}
+.wnav{display:flex;background:#f5f0ea;border-bottom:1px solid var(--brd);overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:8px 10px;gap:6px;align-items:center}
+.wnav::-webkit-scrollbar{display:none}
+.wnb{padding:7px 14px;border:none;background:var(--wht);font-size:.8rem;font-weight:600;color:var(--mut);cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;border-radius:20px;border:1.5px solid var(--brd);transition:all .15s}
+.wnb.on{background:var(--acc);color:var(--wht);border-color:var(--acc)}
+.wnb.shop-tab{background:#e8f0e8;color:var(--grn);border-color:#c8ddc8}
+.wnb.shop-tab.on{background:var(--grn);color:var(--wht);border-color:var(--grn)}
+.bnav{position:fixed;bottom:0;left:0;right:0;background:var(--wht);border-top:1px solid var(--brd);display:flex;z-index:100;height:58px}
+.bnb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent;color:var(--mut)}
+.bnb.on{color:var(--acc)}
+.bico{font-size:1.2rem;line-height:1}
+.bnlbl{font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.content{max-width:660px;margin:0 auto;padding:14px 13px}
+.err-box{background:#fff5f5;border:1px solid #f5c6c6;border-radius:8px;padding:12px;margin-bottom:14px;font-size:.74rem;color:var(--red);white-space:pre-wrap;word-break:break-all;font-family:monospace}
+.loader{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:200px;gap:10px;color:var(--acc);font-size:.85rem}
+.spin{width:26px;height:26px;border:3px solid var(--acb);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.slbl{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
+.slbl.acc{color:var(--acc)}.slbl.grn{color:var(--grn)}.slbl.gry{color:var(--hnt)}
+.shop-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.shop-ttl{font-size:1.05rem;font-weight:700}
+.shop-sts{font-size:.75rem;color:var(--mut)}
+.slist{list-style:none}
+.si{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid #f0ebe3;-webkit-tap-highlight-color:transparent}
+.si:last-child{border-bottom:none}
+.si.bought{opacity:.5}
+.si.tp{cursor:pointer}
+.chk{width:24px;height:24px;flex-shrink:0;border-radius:50%;border:2px solid var(--brd);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.si.avail .chk{border-color:var(--grn);background:var(--gnb);color:var(--grn)}
+.si.tobuy .chk{border-color:var(--acc)}
+.si.bought .chk{background:var(--acc);border-color:var(--acc);color:var(--wht)}
+.sn{font-size:.875rem;flex:1;line-height:1.4}
+.si.bought .sn{text-decoration:line-through;color:var(--hnt)}
+.stag{font-size:.67rem;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.tav{background:var(--gnb);color:var(--grn)}.ttb{background:var(--acl);color:var(--acc)}.tbt{background:#e8e2d9;color:var(--mut)}
+.rw{position:relative;margin-bottom:16px}
+.fbtn{position:absolute;top:0;right:0;background:none;border:none;font-size:1.4rem;cursor:pointer;padding:2px;z-index:2;-webkit-tap-highlight-color:transparent;line-height:1}
+.rtitle{font-size:1.05rem;font-weight:700;line-height:1.3;padding-right:30px}
+.rmeta{display:flex;gap:7px;margin-top:7px;flex-wrap:wrap}
+.pill{background:#f0ebe3;border-radius:12px;padding:3px 10px;font-size:.72rem;color:#6b5b4e;font-weight:500}
+.pill.wk{background:#e8edf5;color:#4a7db0}
+section{margin-bottom:20px}
+.ing-list{list-style:none}
+.ii{display:flex;align-items:flex-start;gap:8px;font-size:.85rem;line-height:1.45;padding:6px 0;border-bottom:1px solid #f0ebe3}
+.ii:last-child{border-bottom:none}
+.ico{width:18px;height:18px;flex-shrink:0;margin-top:1px;border-radius:50%;font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.ii.iav .ico{background:var(--gnb);color:var(--grn)}
+.ii.itb .ico{background:var(--acl);color:var(--acc)}
+.ii.ibt .ico{background:var(--gnb);color:var(--grn)}
+.itag{font-size:.68rem;font-weight:600;margin-left:4px}
+.itag.av{color:var(--grn)}.itag.tb{color:var(--acc)}.itag.bt{color:var(--grn)}
+.plain-list{list-style:none}
+.plain-item{display:flex;align-items:center;gap:9px;font-size:.85rem;line-height:1.45;padding:7px 0;border-bottom:1px solid #f0ebe3;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.plain-item:last-child{border-bottom:none}
+.plain-item.ticked{opacity:.5}
+.plain-item.ticked .plain-name{text-decoration:line-through}
+.plain-chk{width:18px;height:18px;flex-shrink:0;border-radius:50%;border:1.5px solid var(--brd);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--grn)}
+.plain-item.ticked .plain-chk{background:var(--gnb);border-color:var(--grn)}
+.steps{display:flex;flex-direction:column;gap:8px}
+.step{background:var(--wht);border:1px solid var(--brd);border-radius:10px;padding:12px 13px}
+.srem{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#c9a97a;margin-bottom:4px}
+.stxt{font-size:.85rem;line-height:1.55}
+.timers{display:flex;flex-direction:column;gap:6px;margin-top:9px}
+.trow{display:flex;align-items:center;gap:8px;background:var(--acl);border:1px solid var(--acb);border-radius:8px;padding:7px 10px}
+.tlbl{font-size:.76rem;color:#6b5b4e;flex:1;line-height:1.3}
+.tlbl b{font-weight:600;color:var(--txt)}
+.tdisp{font-size:.9rem;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;min-width:36px;text-align:right}
+.tbtn{padding:5px 11px;border-radius:14px;border:1.5px solid var(--acc);background:var(--wht);color:var(--acc);font-size:.73rem;font-weight:600;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
+.tbtn.run{background:var(--acc);color:var(--wht)}
+.tbtn:disabled{border-color:var(--grn);color:var(--grn);background:var(--gnb);cursor:default}
+.alertmsg{font-size:.78rem;font-weight:600;color:var(--acc);margin-top:6px;padding:6px 10px;background:#fff8ec;border-left:3px solid #f0b942;border-radius:4px}
+.rembox{background:var(--acl);border:1.5px solid var(--acb);border-radius:10px;padding:13px}
+.remlist{list-style:none;display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.remitem{background:var(--wht);border:1px solid var(--acb);border-radius:14px;padding:3px 10px;font-size:.74rem;color:#6b5b4e}
+.lib-intro{background:var(--wht);border:1px solid var(--brd);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:.8rem;color:var(--mut);line-height:1.5}
+.lib-intro strong{color:var(--txt);font-weight:600}
+.lib-tabs{display:flex;gap:8px;margin-bottom:14px}
+.ltab{padding:5px 14px;border-radius:20px;font-size:.78rem;font-weight:600;cursor:pointer;border:1.5px solid var(--acc);background:var(--wht);color:var(--acc);-webkit-tap-highlight-color:transparent}
+.ltab.on{background:var(--acc);color:var(--wht)}
+.ltab.s{border-color:#6a4ab0;color:#6a4ab0}
+.ltab.s.on{background:#6a4ab0;color:var(--wht)}
+.card{background:var(--wht);border:1px solid var(--brd);border-radius:10px;margin-bottom:9px;overflow:hidden}
+.card-hdr{display:flex;align-items:center;gap:10px;padding:12px 13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.card-info{flex:1;min-width:0}
+.card-ttl{font-size:.875rem;font-weight:600;line-height:1.3}
+.card-sub{font-size:.71rem;color:var(--mut);margin-top:2px}
+.chev{font-size:.85rem;color:var(--hnt);transition:transform .2s;flex-shrink:0}
+.chev.open{transform:rotate(90deg)}
+.card-body{display:none;padding:0 13px 13px;border-top:1px solid #f0ebe3}
+.card-body.open{display:block}
+.sinput{width:100%;padding:9px 14px;border:1.5px solid var(--brd);border-radius:20px;font-size:.875rem;background:var(--wht);outline:none;-webkit-appearance:none}
+.sinput:focus{border-color:var(--acc)}
+.empty{color:var(--hnt);font-size:.85rem;padding:16px 0}
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <h1 id="htitle">Meal Plan</h1>
+    <select class="wsel" id="wsel" onchange="switchWeek(this.value)"><option>Loading…</option></select>
+  </div>
+  <div class="hsub" id="hsub"></div>
+</header>
+<nav class="wnav" id="wnav"></nav>
+<main class="content" id="main">
+  <div class="loader"><div class="spin"></div><span>Loading…</span></div>
+</main>
+<nav class="bnav">
+  <button class="bnb on" id="bp" onclick="showWeekView()">
+    <span class="bico">📅</span><span class="bnlbl">This week</span>
+  </button>
+  <button class="bnb" id="bl" onclick="showLib('favs')">
+    <span class="bico">📚</span><span class="bnlbl">All recipes</span>
+  </button>
+</nav>
+
+<script>
+// ── Error handlers ───────────────────────────────────────────────
+window.onerror = function(msg, src, line) {
+  document.getElementById("main").innerHTML =
+    '<div class="err-box">JS Error:\n' + msg + '\nLine ' + line + '</div>';
+};
+window.onunhandledrejection = function(e) {
+  document.getElementById("main").innerHTML =
+    '<div class="err-box">Promise error:\n' + String(e.reason) + '</div>';
+};
+
+// ── Supabase config ──────────────────────────────────────────────
+var SB   = "https://vcluruaueetktctdyplh.supabase.co";
+var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZjbHVydWF1ZWV0a3RjdGR5cGxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMzUxNDgsImV4cCI6MjA5MDgxMTE0OH0.224fBOE3ItykxaGxwDHAugm-5_DWLoiPmn4PA1llaRE";
+var SBH  = {"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+ANON};
+
+// ── Supabase helpers ─────────────────────────────────────────────
+async function sbFetch(path, opts) {
+  opts = opts || {};
+  var ctrl = new AbortController();
+  var tid = setTimeout(function() { ctrl.abort(); }, 8000);
+  try {
+    var merged = {headers: SBH, signal: ctrl.signal};
+    if (opts.method) merged.method = opts.method;
+    if (opts.body)   merged.body   = opts.body;
+    if (opts.headers) merged.headers = Object.assign({}, SBH, opts.headers);
+    var r = await fetch(SB + path, merged);
+    clearTimeout(tid);
+    if (!r.ok) throw new Error(r.status + ' ' + await r.text());
+    return r.json();
+  } catch(e) {
+    clearTimeout(tid);
+    throw e;
+  }
+}
+
+// ── Global state ─────────────────────────────────────────────────
+var G = {
+  weeks: [],
+  week: null,
+  day: null,
+  shopState: {},
+  favSet: new Set(),
+  timers: {},
+  view: 'plan',
+  libTab: 'favs',
+  libQ: ''
+};
+
+// ── Utilities ────────────────────────────────────────────────────
+function ingKey(name) {
+  return name.replace(/[^a-z0-9]/gi, '').toLowerCase();
+}
+
+function fmtTime(secs) {
+  var m = Math.floor(secs / 60);
+  var s = secs % 60;
+  return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function setMain(html) {
+  document.getElementById('main').innerHTML = html;
+}
+
+function loader() {
+  setMain('<div class="loader"><div class="spin"></div><span>Loading…</span></div>');
+}
+
+// ── Init ─────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', init);
+
+async function init() {
+  try {
+    var weeks = await sbFetch('/rest/v1/meal_weeks?select=id,title,subtitle,week_type,week_start&order=week_start.desc');
+    G.weeks = weeks;
+    var sel = document.getElementById('wsel');
+    sel.innerHTML = weeks.map(function(w) {
+      return '<option value="' + esc(w.id) + '">' + esc(w.title) + '</option>';
+    }).join('');
+
+    // pick current week, fallback to first
+    var cur = weeks.find(function(w) { return w.week_type === 'current'; }) || weeks[0];
+    if (cur) {
+      sel.value = cur.id;
+      await loadWeek(cur.id);
+    } else {
+      setMain('<div class="empty">No meal plans found.</div>');
+    }
+  } catch(e) {
+    setMain('<div class="err-box">Failed to load weeks:\n' + e.message + '</div>');
+  }
+}
+
+async function switchWeek(id) {
+  if (G.week && G.week.id === id) return;
+  // stop all running timers
+  Object.keys(G.timers).forEach(stopTimer);
+  G.timers = {};
+  await loadWeek(id);
+}
+
+// ── Load week ────────────────────────────────────────────────────
+async function loadWeek(id) {
+  loader();
+  try {
+    var results = await Promise.all([
+      sbFetch('/rest/v1/meal_weeks?id=eq.' + encodeURIComponent(id) + '&select=*'),
+      sbFetch('/rest/v1/shopping_state?week_id=eq.' + encodeURIComponent(id) + '&select=state'),
+      sbFetch('/rest/v1/favourites?week_id=eq.' + encodeURIComponent(id) + '&select=meal_id')
+    ]);
+
+    var weekArr = results[0];
+    if (!weekArr || !weekArr.length) {
+      setMain('<div class="err-box">Week not found.</div>');
+      return;
+    }
+    G.week = weekArr[0];
+    G.shopState = (results[1] && results[1][0] && results[1][0].state) || {};
+    G.favSet = new Set((results[2] || []).map(function(f) { return f.meal_id; }));
+
+    // update header
+    document.getElementById('htitle').textContent = G.week.title || 'Meal Plan';
+    document.getElementById('hsub').textContent   = G.week.subtitle || '';
+
+    // render nav and first day
+    renderDayNav(G.week);
+    if (G.week.meals && G.week.meals.length) {
+      showDay(G.week.meals[0].id);
+    } else {
+      setMain('<div class="empty">No meals this week.</div>');
+    }
+    G.view = 'plan';
+    document.getElementById('bp').classList.add('on');
+    document.getElementById('bl').classList.remove('on');
+  } catch(e) {
+    setMain('<div class="err-box">Failed to load week:\n' + e.message + '</div>');
+  }
+}
+
+// ── Day navigation ───────────────────────────────────────────────
+function renderDayNav(week) {
+  var nav = document.getElementById('wnav');
+  var meals = week.meals || [];
+  var html = meals.map(function(m) {
+    return '<button class="wnb" id="wnb-' + esc(m.id) + '" onclick="showDay(\'' + esc(m.id) + '\')">'
+      + esc(m.label) + '</button>';
+  }).join('');
+  html += '<button class="wnb shop-tab" id="wnb-shop" onclick="showShop()">🛒 Shopping</button>';
+  nav.innerHTML = html;
+}
+
+function setNavActive(id) {
+  var nav = document.getElementById('wnav');
+  nav.querySelectorAll('.wnb').forEach(function(b) { b.classList.remove('on'); });
+  var btn = document.getElementById('wnb-' + id);
+  if (btn) btn.classList.add('on');
+}
+
+// ── Recipe view ──────────────────────────────────────────────────
+function showDay(dayId) {
+  G.day = dayId;
+  setNavActive(dayId);
+  var meal = (G.week.meals || []).find(function(m) { return m.id === dayId; });
+  if (!meal) { setMain('<div class="empty">Meal not found.</div>'); return; }
+  setMain('<div class="rw">' + renderRecipe(meal) + '</div>');
+  bindTimers(meal);
+}
+
+function renderRecipe(meal) {
+  var isFav = G.favSet.has(meal.id);
+  var html = '';
+
+  // fav button
+  html += '<button class="fbtn" id="fbtn-' + esc(meal.id) + '" onclick="toggleFav(' + "'" + esc(meal.id) + "'" + ')" title="' + (isFav ? 'Remove favourite' : 'Add favourite') + '">'
+    + (isFav ? '★' : '☆') + '</button>';
+
+  // title + meta
+  html += '<div class="rtitle">' + esc(meal.title) + '</div>';
+  html += '<div class="rmeta">';
+  if (meal.time)   html += '<span class="pill">⏱ ' + esc(meal.time) + '</span>';
+  if (meal.kcal)   html += '<span class="pill">🔥 ' + esc(meal.kcal) + ' kcal</span>';
+  if (meal.people) html += '<span class="pill">👥 ' + esc(meal.people) + ' ' + (meal.people === 1 ? 'person' : 'people') + '</span>';
+  html += '</div>';
+
+  // already-have (remaining)
+  if (meal.remaining && meal.remaining.length) {
+    html += '<div class="rembox" style="margin-top:12px">';
+    html += '<div class="slbl acc">Already at home</div>';
+    html += '<ul class="remlist">';
+    meal.remaining.forEach(function(r) {
+      html += '<li class="remitem">' + esc(r) + '</li>';
+    });
+    html += '</ul></div>';
+  }
+
+  // ingredients
+  if (meal.ingredients && meal.ingredients.length) {
+    html += '<section style="margin-top:14px">';
+    html += '<div class="slbl acc">Ingredients</div>';
+    html += '<ul class="ing-list">';
+    meal.ingredients.forEach(function(ing) {
+      var key   = ingKey(ing.name);
+      var state = G.shopState[key];
+      var cls, icon, tagCls, tagTxt;
+      if (ing.avail) {
+        cls = 'iav'; icon = '✓'; tagCls = 'av'; tagTxt = 'Have it';
+      } else if (state === 'bought') {
+        cls = 'ibt'; icon = '✓'; tagCls = 'bt'; tagTxt = 'Bought';
+      } else {
+        cls = 'itb'; icon = '•'; tagCls = 'tb'; tagTxt = 'Buy';
+      }
+      html += '<li class="ii ' + cls + '">';
+      html += '<span class="ico">' + icon + '</span>';
+      html += '<span>' + esc(ing.name) + '<span class="itag ' + tagCls + '"> ' + tagTxt + '</span></span>';
+      html += '</li>';
+    });
+    html += '</ul></section>';
+  }
+
+  // steps
+  if (meal.steps && meal.steps.length) {
+    html += '<section>';
+    html += '<div class="slbl acc">Steps</div>';
+    html += '<div class="steps">';
+    meal.steps.forEach(function(step, si) {
+      html += '<div class="step">';
+      if (step.remaining != null) {
+        html += '<div class="srem">– ' + step.remaining + ' min</div>';
+      }
+      html += '<div class="stxt">' + esc(step.text) + '</div>';
+      if (step.timers && step.timers.length) {
+        html += '<div class="timers">';
+        step.timers.forEach(function(t, ti) {
+          var key = meal.id + '-' + si + '-' + ti;
+          html += '<div class="trow" id="trow-' + esc(key) + '">';
+          html += '<div class="tlbl"><b>' + esc(t.label) + '</b><br>' + fmtTime(t.seconds) + '</div>';
+          html += '<div class="tdisp" id="tdisp-' + esc(key) + '">' + fmtTime(t.seconds) + '</div>';
+          html += '<button class="tbtn" id="tbtn-' + esc(key) + '" onclick="timerAction(\'' + esc(key) + '\')">Start</button>';
+          html += '</div>';
+          if (t.alertMsg) {
+            html += '<div class="alertmsg" id="talert-' + esc(key) + '" style="display:none">' + esc(t.alertMsg) + '</div>';
+          }
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div></section>';
+  }
+
+  return html;
+}
+
+// ── Timers ───────────────────────────────────────────────────────
+function bindTimers(meal) {
+  if (!meal.steps) return;
+  meal.steps.forEach(function(step, si) {
+    if (!step.timers) return;
+    step.timers.forEach(function(t, ti) {
+      var key = meal.id + '-' + si + '-' + ti;
+      G.timers[key] = {
+        secs: t.seconds,
+        remaining: t.seconds,
+        running: false,
+        interval: null,
+        alertAt: (t.alertAt != null ? t.alertAt : -1),
+        alertMsg: t.alertMsg || null,
+        alerted: false
+      };
+    });
+  });
+}
+
+function timerAction(key) {
+  var t = G.timers[key];
+  if (!t) return;
+  if (t.remaining === 0) {
+    // reset
+    t.remaining = t.secs;
+    t.alerted   = false;
+    stopTimer(key);
+    updateTimerDisplay(key);
+    var btn = document.getElementById('tbtn-' + key);
+    if (btn) { btn.textContent = 'Start'; btn.classList.remove('run'); btn.disabled = false; }
+    var alrtEl = document.getElementById('talert-' + key);
+    if (alrtEl) alrtEl.style.display = 'none';
+    return;
+  }
+  if (t.running) {
+    // pause
+    stopTimer(key);
+    var btn2 = document.getElementById('tbtn-' + key);
+    if (btn2) { btn2.textContent = 'Resume'; btn2.classList.remove('run'); }
+  } else {
+    // start / resume
+    t.running  = true;
+    t.interval = setInterval(function() {
+      t.remaining--;
+      updateTimerDisplay(key);
+      // alert check
+      if (!t.alerted && t.alertAt >= 0 && t.remaining <= t.alertAt) {
+        t.alerted = true;
+        if (t.alertMsg) {
+          var alrtEl2 = document.getElementById('talert-' + key);
+          if (alrtEl2) alrtEl2.style.display = 'block';
+        }
+      }
+      if (t.remaining <= 0) {
+        t.remaining = 0;
+        stopTimer(key);
+        updateTimerDisplay(key);
+        var btn3 = document.getElementById('tbtn-' + key);
+        if (btn3) { btn3.textContent = 'Reset'; btn3.classList.remove('run'); btn3.disabled = false; }
+      }
+    }, 1000);
+    var btn4 = document.getElementById('tbtn-' + key);
+    if (btn4) { btn4.textContent = 'Pause'; btn4.classList.add('run'); }
+  }
+}
+
+function stopTimer(key) {
+  var t = G.timers[key];
+  if (!t) return;
+  if (t.interval) { clearInterval(t.interval); t.interval = null; }
+  t.running = false;
+}
+
+function updateTimerDisplay(key) {
+  var t = G.timers[key];
+  if (!t) return;
+  var el = document.getElementById('tdisp-' + key);
+  if (el) el.textContent = fmtTime(t.remaining);
+}
+
+// ── Shopping list ────────────────────────────────────────────────
+function showShop() {
+  setNavActive('shop');
+  G.day = null;
+  renderShopList(G.week);
+}
+
+function renderShopList(week) {
+  var meals = week.meals || [];
+
+  // build unified ingredient map: key → {name, meals:[], avail}
+  var map = {};
+  meals.forEach(function(meal) {
+    (meal.ingredients || []).forEach(function(ing) {
+      var k = ingKey(ing.name);
+      if (!map[k]) map[k] = {name: ing.name, meals: [], avail: ing.avail};
+      if (map[k].meals.indexOf(meal.label) === -1) map[k].meals.push(meal.label);
+      if (ing.avail) map[k].avail = true;
+    });
+  });
+
+  // resolve display status for each key
+  var avail = [], tobuy = [], bought = [];
+  Object.keys(map).forEach(function(k) {
+    var item = map[k];
+    var st = G.shopState[k];
+    if (item.avail || st === 'avail') {
+      avail.push({key: k, item: item});
+    } else if (st === 'bought') {
+      bought.push({key: k, item: item});
+    } else {
+      tobuy.push({key: k, item: item});
+    }
+  });
+
+  var total    = avail.length + tobuy.length + bought.length;
+  var doneCount = avail.length + bought.length;
+
+  var html = '<div class="shop-hdr">';
+  html += '<div class="shop-ttl">Shopping List</div>';
+  html += '<div class="shop-sts">' + doneCount + ' / ' + total + ' done</div>';
+  html += '</div>';
+
+  function renderGroup(items, cls, tagCls, tagTxt, icon, clickable) {
+    return items.map(function(entry) {
+      var onclick = clickable ? ' onclick="toggleShopItem(\'' + esc(entry.key) + '\')"' : '';
+      return '<li class="si ' + cls + (clickable ? ' tp' : '') + '"' + onclick + '>'
+        + '<div class="chk">' + icon + '</div>'
+        + '<div class="sn">' + esc(entry.item.name) + '</div>'
+        + '<span class="stag ' + tagCls + '">' + tagTxt + '</span>'
+        + '</li>';
+    }).join('');
+  }
+
+  if (tobuy.length) {
+    html += '<div class="slbl acc">To buy</div>';
+    html += '<ul class="slist">' + renderGroup(tobuy, 'tobuy', 'ttb', 'Buy', '', true) + '</ul>';
+  }
+  if (avail.length) {
+    html += '<div class="slbl grn" style="margin-top:16px">Already have</div>';
+    html += '<ul class="slist">' + renderGroup(avail, 'avail', 'tav', 'Have it', '✓', false) + '</ul>';
+  }
+  if (bought.length) {
+    html += '<div class="slbl gry" style="margin-top:16px">Bought</div>';
+    html += '<ul class="slist">' + renderGroup(bought, 'bought', 'tbt', 'Bought', '✓', true) + '</ul>';
+  }
+  if (!total) {
+    html += '<div class="empty">No ingredients found.</div>';
+  }
+
+  setMain(html);
+}
+
+function toggleShopItem(key) {
+  var cur = G.shopState[key] || 'tobuy';
+  G.shopState[key] = (cur === 'tobuy') ? 'bought' : 'tobuy';
+  persistShopState();
+  renderShopList(G.week);
+}
+
+async function persistShopState() {
+  try {
+    await sbFetch('/rest/v1/shopping_state?week_id=eq.' + encodeURIComponent(G.week.id), {
+      method: 'PATCH',
+      headers: {'Prefer': 'return=minimal'},
+      body: JSON.stringify({state: G.shopState, updated_at: new Date().toISOString()})
+    });
+  } catch(e) {
+    // silently ignore – UI already updated
+    console.warn('Shopping state save failed:', e.message);
+  }
+}
+
+// ── Week view toggle ─────────────────────────────────────────────
+function showWeekView() {
+  document.getElementById('bp').classList.add('on');
+  document.getElementById('bl').classList.remove('on');
+  G.view = 'plan';
+  if (G.week) {
+    renderDayNav(G.week);
+    var day = G.day || (G.week.meals && G.week.meals[0] && G.week.meals[0].id);
+    if (day) showDay(day);
+  }
+}
+
+// ── Library ──────────────────────────────────────────────────────
+async function showLib(tab) {
+  document.getElementById('bl').classList.add('on');
+  document.getElementById('bp').classList.remove('on');
+  G.view    = 'lib';
+  G.libTab  = tab || 'favs';
+  G.libQ    = '';
+
+  // clear day nav
+  document.getElementById('wnav').innerHTML = '';
+  loader();
+
+  try {
+    var favs = await sbFetch('/rest/v1/favourites?select=*&order=created_at.desc');
+    renderLib(favs);
+  } catch(e) {
+    setMain('<div class="err-box">Failed to load library:\n' + e.message + '</div>');
+  }
+}
+
+function renderLib(favs) {
+  var tab  = G.libTab;
+  var q    = G.libQ.trim().toLowerCase();
+
+  var html = '';
+
+  // search
+  html += '<input class="sinput" type="search" placeholder="Search recipes…" value="' + esc(G.libQ) + '" oninput="libSearch(this.value,window._libFavs)" style="margin-bottom:14px">';
+
+  // tabs
+  html += '<div class="lib-tabs">';
+  html += '<button class="ltab' + (tab === 'favs' ? ' on' : '') + '" onclick="libTab(\'favs\',window._libFavs)">★ Favourites</button>';
+  html += '<button class="ltab s' + (tab === 'sch' ? ' on' : '') + '" onclick="libTab(\'sch\',window._libFavs)">📅 This week</button>';
+  html += '</div>';
+
+  var items;
+  if (tab === 'favs') {
+    items = favs;
+  } else {
+    // this week's meals as pseudo-favourites
+    items = (G.week && G.week.meals || []).map(function(m) {
+      return {
+        id: (G.week.id + '-' + m.id),
+        meal_id: m.id,
+        week_id: G.week.id,
+        week_title: G.week.title,
+        meal: m
+      };
+    });
+  }
+
+  if (q) {
+    items = items.filter(function(f) {
+      return (f.meal.title || '').toLowerCase().indexOf(q) !== -1
+          || (f.meal.label || '').toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  if (!items.length) {
+    html += '<div class="empty">No recipes found.</div>';
+  } else {
+    items.forEach(function(f) {
+      var m = f.meal;
+      var cardId = 'card-' + esc(f.id);
+      html += '<div class="card">';
+      html += '<div class="card-hdr" onclick="toggleCard(\'' + esc(cardId) + '\')">';
+      html += '<div class="card-info">';
+      html += '<div class="card-ttl">' + esc(m.title || m.label) + '</div>';
+      var sub = [];
+      if (m.time)   sub.push('⏱ ' + m.time);
+      if (m.kcal)   sub.push('🔥 ' + m.kcal + ' kcal');
+      if (m.people) sub.push('👥 ' + m.people);
+      if (f.week_title) sub.push(f.week_title.replace('Meal Plan | ',''));
+      html += '<div class="card-sub">' + esc(sub.join(' · ')) + '</div>';
+      html += '</div>';
+      html += '<span class="chev" id="chev-' + esc(cardId) + '">›</span>';
+      html += '</div>';
+      html += '<div class="card-body" id="' + esc(cardId) + '">';
+      // ingredient list inside card
+      if (m.ingredients && m.ingredients.length) {
+        html += '<div style="padding-top:10px">';
+        html += '<div class="slbl acc">Ingredients</div>';
+        html += '<ul class="ing-list">';
+        m.ingredients.forEach(function(ing) {
+          var cls = ing.avail ? 'iav' : 'itb';
+          var icon = ing.avail ? '✓' : '•';
+          html += '<li class="ii ' + cls + '"><span class="ico">' + icon + '</span>' + esc(ing.name) + '</li>';
+        });
+        html += '</ul></div>';
+      }
+      html += '</div></div>';
+    });
+  }
+
+  window._libFavs = favs;
+  setMain(html);
+}
+
+function toggleCard(id) {
+  var body = document.getElementById(id);
+  var chev = document.getElementById('chev-' + id);
+  if (!body) return;
+  body.classList.toggle('open');
+  if (chev) chev.classList.toggle('open');
+}
+
+function libTab(tab, favs) {
+  G.libTab = tab;
+  renderLib(favs || window._libFavs || []);
+}
+
+function libSearch(q, favs) {
+  G.libQ = q;
+  renderLib(favs || window._libFavs || []);
+}
+
+// ── Favourites ───────────────────────────────────────────────────
+async function toggleFav(mealId) {
+  var meal = (G.week.meals || []).find(function(m) { return m.id === mealId; });
+  if (!meal) return;
+
+  var btn = document.getElementById('fbtn-' + mealId);
+  if (G.favSet.has(mealId)) {
+    // remove
+    G.favSet.delete(mealId);
+    if (btn) btn.textContent = '☆';
+    try {
+      await sbFetch('/rest/v1/favourites?id=eq.' + encodeURIComponent(G.week.id + '-' + mealId), {
+        method: 'DELETE',
+        headers: {'Prefer': 'return=minimal'}
+      });
+    } catch(e) {
+      G.favSet.add(mealId);
+      if (btn) btn.textContent = '★';
+    }
+  } else {
+    // add
+    G.favSet.add(mealId);
+    if (btn) btn.textContent = '★';
+    try {
+      await sbFetch('/rest/v1/favourites', {
+        method: 'POST',
+        headers: {'Prefer': 'return=minimal'},
+        body: JSON.stringify({
+          id: G.week.id + '-' + mealId,
+          meal_id: mealId,
+          week_id: G.week.id,
+          week_title: G.week.title,
+          meal: meal
+        })
+      });
+    } catch(e) {
+      G.favSet.delete(mealId);
+      if (btn) btn.textContent = '☆';
+    }
+  }
+}
+</script>
+</body>
+</html>
