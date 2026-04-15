@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="24 60 140 65">
+  <!-- Transparent background — uses same coordinate space as icon.svg
+       so the dot sits at the exact same relative position as the app icon -->
+  <text x="96" y="114"
+        font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', 'Inter', sans-serif"
+        font-size="58"
+        font-weight="700"
+        fill="#1a1612"
+        text-anchor="middle"
+        letter-spacing="-3">mesa</text>
+
+  <!-- Terracotta dot — same cx/cy as icon.svg (upper-right, cap-height) -->
+  <circle cx="150" cy="76" r="7" fill="#c0562a"/>
+</svg>

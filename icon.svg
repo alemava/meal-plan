@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <!-- Warm near-black background -->
+  <rect width="192" height="192" rx="42" fill="#1a1612"/>
+
+  <!-- "mesa" wordmark, centered -->
+  <text x="96" y="114"
+        font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', 'Inter', sans-serif"
+        font-size="58"
+        font-weight="700"
+        fill="#faf6f0"
+        text-anchor="middle"
+        letter-spacing="-3">mesa</text>
+
+  <!-- Terracotta accent dot — upper-right, at cap-height level -->
+  <circle cx="150" cy="76" r="7" fill="#c0562a"/>
+</svg>
