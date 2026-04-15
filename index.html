@@ -66,11 +66,12 @@ header{background:var(--bg);border-bottom:1px solid var(--brd);padding:14px 18px
 .bnlbl{font-size:.64rem;text-transform:none;letter-spacing:-0.01em;font-weight:600}
 .bnav.collapsed{height:32px;overflow:hidden;padding:0}
 .bnav.collapsed .bnb{display:none}
-#bnav-handle{display:none;width:100%;height:32px;min-height:32px;border:none;background:none;font-size:.68rem;font-weight:600;text-transform:none;letter-spacing:-0.01em;color:var(--mut);cursor:pointer;-webkit-tap-highlight-color:transparent;padding:0 16px}
+#bnav-handle{display:none;width:100%;height:32px;min-height:32px;border:none;background:none;font-size:.68rem;font-weight:600;text-transform:none;letter-spacing:-0.01em;color:var(--mut);cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;padding:0 16px}
 .bnav.collapsed #bnav-handle{display:flex;align-items:center;justify-content:center;gap:6px}
-.bnav.collapsed #bnav-collapse{display:none}
-#bnav-collapse{border:none;background:none;font-size:.75rem;font-weight:600;color:var(--hnt);cursor:pointer;-webkit-tap-highlight-color:transparent;padding:4px 10px;min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;border-radius:8px}
-#bnav-collapse:hover{background:var(--srf)}
+#bnav-collapse{border:1px solid var(--brd2);background:var(--srf);color:var(--mut);cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;padding:0 14px;height:34px;min-width:56px;display:none;align-items:center;justify-content:center;border-radius:999px;flex-shrink:0;transition:background .15s,border-color .15s}
+#bnav-collapse svg{width:14px;height:14px;pointer-events:none}
+#bnav-collapse:hover{background:var(--brd);border-color:var(--hnt)}
+.bnav.collapsed #bnav-collapse{display:none!important}
 
 #offline-bar{display:none;background:var(--red);color:#fff;font-size:.72rem;font-weight:600;text-align:center;padding:6px 12px;position:sticky;top:0;z-index:99;letter-spacing:0}
 #install-banner{display:none;background:var(--acl);border-bottom:1px solid var(--acb);padding:11px 16px;position:sticky;top:0;z-index:97;animation:ibfade .35s ease}
@@ -252,7 +253,7 @@ section{margin-bottom:24px}
   <button class="bnb" id="bl" onclick="showLib('favs')">
     <span class="bico">📚</span><span class="bnlbl">All recipes</span>
   </button>
-  <button id="bnav-collapse" onclick="userCollapseBnav()" title="Minimise">▾</button>
+  <button id="bnav-collapse" onclick="userCollapseBnav()" title="Minimise nav"><svg viewBox="0 0 20 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,2 10,10 18,2"/></svg></button>
 </nav>
 
 <script>
@@ -321,7 +322,9 @@ var G = {
 function syncViewport() {
   var vv = window.visualViewport;
   if (!vv) return;
-  var offset = Math.max(0, Math.round(window.innerHeight - vv.offsetTop - vv.height));
+  // Clamp offsetTop to ≥0 so iOS rubber-band overscroll (negative offsetTop)
+  // doesn't mistakenly inflate the bottom offset and lift the nav bar.
+  var offset = Math.max(0, Math.round(window.innerHeight - Math.max(0, vv.offsetTop) - vv.height));
   G.vvBotOffset = offset;
   var bnav = document.getElementById('bnav');
   if (bnav) bnav.style.bottom = offset ? offset + 'px' : '';
@@ -331,6 +334,7 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', syncViewport);
   window.visualViewport.addEventListener('scroll', syncViewport);
 }
+window.addEventListener('resize', updateBnavCollapseBtn);
 
 // ── Utilities ────────────────────────────────────────────────────
 function ingKey(name) {
@@ -470,7 +474,7 @@ async function init() {
     var past    = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'past'; });
     var current = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'current'; });
     var future  = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'future'; });
-    var shown   = past.slice(-2).concat(current).concat(future.slice(0,1));
+    var shown   = past.slice(-1).concat(current).concat(future.slice(0,1));
     renderWeekCarousel(shown, thisMonday);
 
     // pick current week, fallback to most recent
@@ -884,6 +888,7 @@ function timerAction(key) {
     if (inlineRow) inlineRow.classList.add('running');
     t.dismissed = false;
     t.running   = true;
+    autoCollapseBnav();
     // If trow is already floating keep the placeholder observer — don't disturb float state
     if (!inlineRow || inlineRow.style.position !== 'fixed') {
       setupTimerObserver(key);
@@ -982,12 +987,37 @@ function collapseBnav() {
   if (bar) bar.classList.add('nav-collapsed');
 }
 
+function autoCollapseBnav() {
+  if (window.innerWidth >= 900) return;          // desktop — leave alone
+  var nav = document.getElementById('bnav');
+  if (!nav || nav.classList.contains('collapsed')) return; // already collapsed
+  nav.classList.add('collapsed');
+  var bar = document.getElementById('sticky-bar');
+  if (bar) bar.classList.add('nav-collapsed');
+  G.navPinnedOpen = false;
+  updateBnavCollapseBtn();
+  setTimeout(repositionFloatingTimers, 50);
+}
+
+function updateBnavCollapseBtn() {
+  var btn = document.getElementById('bnav-collapse');
+  if (!btn) return;
+  var isMobile = window.innerWidth < 900;
+  var hasRunning = Object.keys(G.timers).some(function(k) {
+    return G.timers[k] && G.timers[k].running;
+  });
+  var bnav = document.getElementById('bnav');
+  var isExpanded = bnav && !bnav.classList.contains('collapsed');
+  btn.style.display = (isMobile && hasRunning && isExpanded) ? 'flex' : 'none';
+}
+
 function expandBnav() {
   G.navPinnedOpen = true;
   var nav = document.getElementById('bnav');
   var bar = document.getElementById('sticky-bar');
   if (nav) nav.classList.remove('collapsed');
   if (bar) bar.classList.remove('nav-collapsed');
+  updateBnavCollapseBtn();
   setTimeout(repositionFloatingTimers, 50);
 }
 
@@ -997,12 +1027,14 @@ function userCollapseBnav() {
   var bar = document.getElementById('sticky-bar');
   if (nav) nav.classList.add('collapsed');
   if (bar) bar.classList.add('nav-collapsed');
+  updateBnavCollapseBtn();
   setTimeout(repositionFloatingTimers, 50);
 }
 
 function renderStickyBar() {
   var bar = document.getElementById('sticky-bar');
   if (bar) bar.style.display = 'none';
+  updateBnavCollapseBtn();
 }
 
 // ── Timer floating (position:fixed when trow leaves viewport) ────
