@@ -313,8 +313,24 @@ var G = {
   libTab: 'favs',
   libQ: '',
   isPast: false,        // true when the loaded week is a past week
-  navPinnedOpen: false  // true = user explicitly expanded; auto-collapse blocked
+  navPinnedOpen: false, // true = user explicitly expanded; auto-collapse blocked
+  vvBotOffset: 0        // px to add to fixed bottom elements (visualViewport compensation)
 };
+
+// ── Visual viewport sync (iOS/Chrome browser-chrome slide bug) ───
+function syncViewport() {
+  var vv = window.visualViewport;
+  if (!vv) return;
+  var offset = Math.max(0, Math.round(window.innerHeight - vv.offsetTop - vv.height));
+  G.vvBotOffset = offset;
+  var bnav = document.getElementById('bnav');
+  if (bnav) bnav.style.bottom = offset ? offset + 'px' : '';
+  repositionFloatingTimers();
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncViewport);
+  window.visualViewport.addEventListener('scroll', syncViewport);
+}
 
 // ── Utilities ────────────────────────────────────────────────────
 function ingKey(name) {
@@ -755,7 +771,7 @@ function repositionFloatingTimers() {
   var hdr    = document.querySelector('header');
   var bnavEl = document.getElementById('bnav');
   var topAcc = (hdr    ? hdr.offsetHeight    : 55) + 8;
-  var botAcc = (bnavEl ? bnavEl.offsetHeight : 62) + 8;
+  var botAcc = (bnavEl ? bnavEl.offsetHeight : 62) + 8 + G.vvBotOffset;
   Object.keys(G.timers).forEach(function(k) {
     var el = document.getElementById('trow-' + k);
     if (!el || el.style.position !== 'fixed') return;
@@ -775,7 +791,7 @@ function getTimerRootMargin(key) {
   var hdr    = document.querySelector('header');
   var bnavEl = document.getElementById('bnav');
   var topBase = hdr    ? hdr.offsetHeight    : 55;
-  var botBase = bnavEl ? bnavEl.offsetHeight : 62;
+  var botBase = (bnavEl ? bnavEl.offsetHeight : 62) + G.vvBotOffset;
   var topExtra = 0, botExtra = 0;
   Object.keys(G.timers).forEach(function(k) {
     if (k === key) return;
@@ -1037,7 +1053,7 @@ function floatTrow(key, below) {
   var hdr_    = document.querySelector('header');
   var bnavEl_ = document.getElementById('bnav');
   var topOff  = (hdr_    ? hdr_.offsetHeight    : 55) + 8;
-  var botOff  = (bnavEl_ ? bnavEl_.offsetHeight : 62) + 8;
+  var botOff  = (bnavEl_ ? bnavEl_.offsetHeight : 62) + 8 + G.vvBotOffset;
   Object.keys(G.timers).forEach(function(k) {
     if (k === key) return;
     var el = document.getElementById('trow-' + k);
