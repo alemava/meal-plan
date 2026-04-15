@@ -73,6 +73,17 @@ header{background:var(--bg);border-bottom:1px solid var(--brd);padding:14px 18px
 #bnav-collapse:hover{background:var(--srf)}
 
 #offline-bar{display:none;background:var(--red);color:#fff;font-size:.72rem;font-weight:600;text-align:center;padding:6px 12px;position:sticky;top:0;z-index:99;letter-spacing:0}
+#install-banner{display:none;background:var(--acl);border-bottom:1px solid var(--acb);padding:11px 16px;position:sticky;top:0;z-index:97;animation:ibfade .35s ease}
+@keyframes ibfade{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.ib-inner{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:10px}
+.ib-icon{font-size:1.3rem;flex-shrink:0;line-height:1}
+.ib-text{flex:1;font-size:.77rem;line-height:1.4;color:var(--txt)}
+.ib-text b{font-weight:700;color:var(--acc)}
+.ib-text .ib-steps{font-size:.71rem;color:var(--mut);margin-top:2px}
+.ib-install{background:var(--acc);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:.76rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;white-space:nowrap;flex-shrink:0;transition:background .15s;letter-spacing:-0.01em}
+.ib-install:hover{background:var(--acd)}
+.ib-close{background:none;border:none;color:var(--mut);font-size:1rem;cursor:pointer;padding:4px 6px;-webkit-tap-highlight-color:transparent;line-height:1;flex-shrink:0;border-radius:6px;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center}
+.ib-close:hover{color:var(--txt);background:var(--acb)}
 .content{max-width:680px;margin:0 auto;padding:20px 18px}
 .err-box{background:var(--acl);border:1px solid var(--acb);border-radius:12px;padding:14px;margin-bottom:14px;font-size:.74rem;color:var(--red);white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .loader{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:220px;gap:12px;color:var(--mut);font-size:.85rem}
@@ -220,6 +231,14 @@ section{margin-bottom:24px}
 </header>
 <nav class="wknav" id="wknav"></nav>
 <div id="offline-bar">No connection — showing cached data</div>
+<div id="install-banner">
+  <div class="ib-inner">
+    <span class="ib-icon">📲</span>
+    <div class="ib-text" id="ib-text"></div>
+    <button class="ib-install" id="ib-install-btn" style="display:none" onclick="triggerInstall()">Install</button>
+    <button class="ib-close" onclick="dismissInstallBanner()" title="Dismiss" aria-label="Dismiss">✕</button>
+  </div>
+</div>
 <nav class="wnav" id="wnav"></nav>
 <main class="content" id="main">
   <div class="loader"><div class="spin"></div><span>Loading…</span></div>
@@ -237,6 +256,15 @@ section{margin-bottom:24px}
 </nav>
 
 <script>
+// ── Install prompt capture (must be early) ───────────────────────
+window.deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  window.deferredInstallPrompt = e;
+  // If banner is already initialised, update it now
+  if (typeof initInstallBanner === 'function') initInstallBanner();
+});
+
 // ── Error handlers ───────────────────────────────────────────────
 window.onerror = function(msg, src, line) {
   document.getElementById("main").innerHTML =
@@ -362,10 +390,61 @@ function loader() {
   setMain('<div class="loader"><div class="spin"></div><span>Loading…</span></div>');
 }
 
+// ── Install banner ───────────────────────────────────────────────
+function initInstallBanner() {
+  // Never show if already installed (standalone / fullscreen)
+  if (window.matchMedia('(display-mode: standalone)').matches) return;
+  if (window.navigator.standalone === true) return;          // iOS standalone
+  // Never show if user already dismissed
+  if (localStorage.getItem('mesa-install-dismissed')) return;
+
+  var banner = document.getElementById('install-banner');
+  var textEl = document.getElementById('ib-text');
+  var installBtn = document.getElementById('ib-install-btn');
+  if (!banner || !textEl) return;
+
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+  if (isIOS && isSafari) {
+    // iOS Safari — manual instructions only
+    textEl.innerHTML =
+      '<b>Add mesa to your Home Screen</b>' +
+      '<div class="ib-steps">Tap the <b>Share</b> button (⬆) then <b>"Add to Home Screen"</b></div>';
+    installBtn.style.display = 'none';
+    banner.style.display = 'block';
+  } else if (window.deferredInstallPrompt) {
+    // Chrome / Android — native prompt available
+    textEl.innerHTML =
+      '<b>Install mesa</b>' +
+      '<div class="ib-steps">Get the app — works offline too</div>';
+    installBtn.style.display = '';
+    banner.style.display = 'block';
+  }
+  // Other browsers: don't show anything
+}
+
+function dismissInstallBanner() {
+  localStorage.setItem('mesa-install-dismissed', '1');
+  var banner = document.getElementById('install-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+function triggerInstall() {
+  var prompt = window.deferredInstallPrompt;
+  if (!prompt) return;
+  prompt.prompt();
+  prompt.userChoice.then(function(choice) {
+    window.deferredInstallPrompt = null;
+    dismissInstallBanner();
+  });
+}
+
 // ── Init ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
+  initInstallBanner();
   try {
     var weeks = await sbFetch('/rest/v1/meal_weeks?select=id,title,subtitle,week_type,week_start&order=week_start.asc');
     G.weeks = weeks;
