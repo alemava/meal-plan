@@ -2,7 +2,7 @@
   "name": "mesa",
   "short_name": "mesa",
   "description": "Your smart meal planning companion",
-  "start_url": "./meal_plan_viewer.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#faf6f0",

@@ -1,6 +1,6 @@
-var CACHE = 'mesa-v3';
+var CACHE = 'mesa-v4';
 var SHELL = [
-  './meal_plan_viewer.html',
+  './index.html',
   './manifest.json',
   './icon.svg',
   './logo.svg'
