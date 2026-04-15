@@ -1502,17 +1502,29 @@ function updateNavTabLabel(mealId) {
 
 // ── PWA: Service worker + offline indicator ──────────────────────
 if ('serviceWorker' in navigator) {
+  function showUpdateBanner() {
+    var banner = document.getElementById('update-banner');
+    if (banner) banner.style.display = 'block';
+  }
+  function trackInstallingSW(sw) {
+    sw.addEventListener('statechange', function() {
+      if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+        showUpdateBanner();
+      }
+    });
+  }
   navigator.serviceWorker.register('./sw.js').then(function(reg) {
+    // Already waiting (loaded after SW installed but before it activated)
+    if (reg.waiting && navigator.serviceWorker.controller) {
+      showUpdateBanner();
+    }
+    // Currently installing
+    if (reg.installing) {
+      trackInstallingSW(reg.installing);
+    }
+    // Future updates detected while page is open
     reg.addEventListener('updatefound', function() {
-      var newSW = reg.installing;
-      if (!newSW) return;
-      newSW.addEventListener('statechange', function() {
-        // 'installed' + existing controller = new version ready, waiting to activate
-        if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-          var banner = document.getElementById('update-banner');
-          if (banner) banner.style.display = 'block';
-        }
-      });
+      if (reg.installing) trackInstallingSW(reg.installing);
     });
   }).catch(function(e) {
     console.warn('SW registration failed:', e);
