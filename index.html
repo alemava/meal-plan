@@ -74,6 +74,14 @@ header{background:var(--bg);border-bottom:1px solid var(--brd);padding:14px 18px
 .bnav.collapsed #bnav-collapse{display:none!important}
 
 #offline-bar{display:none;background:var(--red);color:#fff;font-size:.72rem;font-weight:600;text-align:center;padding:6px 12px;position:sticky;top:0;z-index:99;letter-spacing:0}
+#update-banner{display:none;background:var(--gnb);border-bottom:1px solid var(--gnc);padding:11px 16px;position:sticky;top:0;z-index:98;animation:ibfade .35s ease}
+.ub-inner{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:10px}
+.ub-icon{font-size:1.2rem;flex-shrink:0;line-height:1}
+.ub-text{flex:1;font-size:.77rem;line-height:1.4;color:var(--txt)}
+.ub-text b{font-weight:700;color:var(--grn)}
+.ub-text span{font-size:.71rem;color:var(--mut)}
+.ub-close{background:none;border:none;color:var(--mut);font-size:1rem;cursor:pointer;padding:4px 6px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;line-height:1;flex-shrink:0;border-radius:6px;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center}
+.ub-close:hover{color:var(--txt);background:var(--gnc)}
 #install-banner{display:none;background:var(--acl);border-bottom:1px solid var(--acb);padding:11px 16px;position:sticky;top:0;z-index:97;animation:ibfade .35s ease}
 @keyframes ibfade{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .ib-inner{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:10px}
@@ -232,6 +240,16 @@ section{margin-bottom:24px}
 </header>
 <nav class="wknav" id="wknav"></nav>
 <div id="offline-bar">No connection — showing cached data</div>
+<div id="update-banner">
+  <div class="ub-inner">
+    <span class="ub-icon">🔄</span>
+    <div class="ub-text">
+      <b>Nueva versión disponible</b><br>
+      <span>Cierra la app y vuelve a abrirla para actualizar</span>
+    </div>
+    <button class="ub-close" onclick="document.getElementById('update-banner').style.display='none'" title="Cerrar" aria-label="Cerrar">✕</button>
+  </div>
+</div>
 <div id="install-banner">
   <div class="ib-inner">
     <span class="ib-icon">📲</span>
@@ -1484,7 +1502,19 @@ function updateNavTabLabel(mealId) {
 
 // ── PWA: Service worker + offline indicator ──────────────────────
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(function(e) {
+  navigator.serviceWorker.register('./sw.js').then(function(reg) {
+    reg.addEventListener('updatefound', function() {
+      var newSW = reg.installing;
+      if (!newSW) return;
+      newSW.addEventListener('statechange', function() {
+        // 'installed' + existing controller = new version ready, waiting to activate
+        if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+          var banner = document.getElementById('update-banner');
+          if (banner) banner.style.display = 'block';
+        }
+      });
+    });
+  }).catch(function(e) {
     console.warn('SW registration failed:', e);
   });
 }
