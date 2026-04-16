@@ -701,10 +701,12 @@ function renderRecipe(meal) {
   if (meal.people) html += '<span class="pill">👥 ' + esc(meal.people) + ' ' + (meal.people === 1 ? 'person' : 'people') + '</span>';
   html += '</div>';
 
-  // Start cooking CTA
-  html += '<button class="cook-btn" onclick="enterCookingMode()">'
-        + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16 10,8" fill="currentColor" stroke="none"/></svg>'
-        + 'Start cooking</button>';
+  // Start cooking CTA — only on devices that support the Wake Lock API
+  if ('wakeLock' in navigator) {
+    html += '<button class="cook-btn" onclick="enterCookingMode()">'
+          + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16 10,8" fill="currentColor" stroke="none"/></svg>'
+          + 'Start cooking</button>';
+  }
 
   // ── left column: ingredients ──────────────────────────────────
   var ingHtml = '';
