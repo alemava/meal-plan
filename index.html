@@ -90,6 +90,7 @@ header{background:var(--bg);border-bottom:1px solid var(--brd);padding:14px 18px
 .ib-text{flex:1;font-size:.77rem;line-height:1.4;color:var(--txt)}
 .ib-text b{font-weight:700;color:var(--txt)}
 .ib-text .ib-steps{font-size:.71rem;color:var(--mut);margin-top:2px}
+.ib-share-ico{display:inline-block;vertical-align:middle;width:14px;height:14px;margin:0 1px;position:relative;top:-1px}
 .ib-install{background:var(--grn);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:.76rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;white-space:nowrap;flex-shrink:0;transition:background .15s;letter-spacing:-0.01em}
 .ib-install:hover{background:#3d5c45}
 .ib-close{background:none;border:none;color:var(--mut);font-size:1rem;cursor:pointer;padding:4px 6px;-webkit-tap-highlight-color:transparent;line-height:1;flex-shrink:0;border-radius:6px;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center}
@@ -464,12 +465,13 @@ function initInstallBanner() {
     else               iconEl.innerHTML = ICO_PHONE;
   }
 
+  var ICO_IOS_SHARE = '<svg class="ib-share-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8,7 12,3 16,7"/><line x1="12" y1="3" x2="12" y2="16"/><path d="M8 11H5v10h14V11h-3"/></svg>';
+
   if (isIOS) {
     // ALL iOS browsers (Safari, Chrome, Firefox) — WebKit, manual only
-    var shareIcon = isIPad ? '⬆' : '⬆';
     textEl.innerHTML =
       '<b>Add mesa to your Home Screen</b>' +
-      '<div class="ib-steps">Tap the <b>Share</b> button (' + shareIcon + ') then <b>"Add to Home Screen"</b></div>';
+      '<div class="ib-steps">Tap ' + ICO_IOS_SHARE + ' then <b>"Add to Home Screen"</b></div>';
     installBtn.style.display = 'none';
     banner.style.display = 'block';
   } else if (isMacSafari) {
