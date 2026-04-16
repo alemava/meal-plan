@@ -64,14 +64,6 @@ header{background:var(--bg);border-bottom:1px solid var(--brd);padding:14px 18px
 .bnb.on{color:var(--txt);background:var(--srf)}
 .bico{font-size:1.25rem;line-height:1}
 .bnlbl{font-size:.64rem;text-transform:none;letter-spacing:-0.01em;font-weight:600}
-.bnav.collapsed{height:48px;overflow:hidden;padding:0}
-.bnav.collapsed .bnb{display:none}
-#bnav-handle{display:none;width:100%;height:48px;min-height:48px;border:none;background:none;font-size:.68rem;font-weight:600;text-transform:none;letter-spacing:-0.01em;color:var(--mut);cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;padding:0 16px}
-.bnav.collapsed #bnav-handle{display:flex;align-items:center;justify-content:center;gap:6px}
-#bnav-collapse{border:1px solid var(--brd2);background:var(--srf);color:var(--mut);cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;padding:0 14px;height:34px;min-width:56px;display:none;align-items:center;justify-content:center;border-radius:999px;flex-shrink:0;transition:background .15s,border-color .15s}
-#bnav-collapse svg{width:14px;height:14px;pointer-events:none}
-#bnav-collapse:hover{background:var(--brd);border-color:var(--hnt)}
-.bnav.collapsed #bnav-collapse{display:none!important}
 
 #offline-bar{display:none;background:var(--red);color:#fff;font-size:.72rem;font-weight:600;text-align:center;padding:6px 12px;position:sticky;top:0;z-index:99;letter-spacing:0}
 #update-banner{display:none;background:var(--gnb);border-bottom:1px solid var(--gnc);padding:11px 16px;position:sticky;top:0;z-index:98;animation:ibfade .35s ease}
@@ -267,14 +259,12 @@ section{margin-bottom:24px}
 </main>
 <div id="sticky-bar"><div class="stk-inner" id="stk-inner"></div></div>
 <nav class="bnav" id="bnav">
-  <button id="bnav-handle" onclick="expandBnav()">▲ Show nav</button>
   <button class="bnb on" id="bp" onclick="showWeekView()">
     <span class="bico">📅</span><span class="bnlbl">Meal plan</span>
   </button>
   <button class="bnb" id="bl" onclick="showLib('favs')">
     <span class="bico">📚</span><span class="bnlbl">All recipes</span>
   </button>
-  <button id="bnav-collapse" onclick="userCollapseBnav()" title="Minimise nav"><svg viewBox="0 0 20 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,2 10,10 18,2"/></svg></button>
 </nav>
 
 <script>
@@ -340,7 +330,6 @@ var G = {
   libTab: 'favs',
   libQ: '',
   isPast: false,        // true when the loaded week is a past week
-  navPinnedOpen: false, // true = user explicitly expanded; auto-collapse blocked
   vvBotOffset: 0        // px to add to fixed bottom elements (visualViewport compensation)
 };
 
@@ -360,7 +349,6 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', syncViewport);
   window.visualViewport.addEventListener('scroll', syncViewport);
 }
-window.addEventListener('resize', updateBnavCollapseBtn);
 
 // ── Utilities ────────────────────────────────────────────────────
 function ingKey(name) {
@@ -940,7 +928,6 @@ function timerAction(key) {
     if (inlineRow) inlineRow.classList.add('running');
     t.dismissed = false;
     t.running   = true;
-    autoCollapseBnav();
     // Ask for notification permission on first timer start (non-blocking)
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission();
@@ -1039,63 +1026,9 @@ function stickyRestart(key) {
   timerAction(key); // resets dismissed flag, hides inline row, starts counting
 }
 
-function collapseBnav() {
-  // only auto-collapse if user hasn't pinned it open
-  if (G.navPinnedOpen) return;
-  var nav = document.getElementById('bnav');
-  var bar = document.getElementById('sticky-bar');
-  if (nav) nav.classList.add('collapsed');
-  if (bar) bar.classList.add('nav-collapsed');
-}
-
-function autoCollapseBnav() {
-  if (window.innerWidth >= 900) return;          // desktop — leave alone
-  var nav = document.getElementById('bnav');
-  if (!nav || nav.classList.contains('collapsed')) return; // already collapsed
-  nav.classList.add('collapsed');
-  var bar = document.getElementById('sticky-bar');
-  if (bar) bar.classList.add('nav-collapsed');
-  G.navPinnedOpen = false;
-  updateBnavCollapseBtn();
-  setTimeout(repositionFloatingTimers, 50);
-}
-
-function updateBnavCollapseBtn() {
-  var btn = document.getElementById('bnav-collapse');
-  if (!btn) return;
-  var isMobile = window.innerWidth < 900;
-  var hasRunning = Object.keys(G.timers).some(function(k) {
-    return G.timers[k] && G.timers[k].running;
-  });
-  var bnav = document.getElementById('bnav');
-  var isExpanded = bnav && !bnav.classList.contains('collapsed');
-  btn.style.display = (isMobile && hasRunning && isExpanded) ? 'flex' : 'none';
-}
-
-function expandBnav() {
-  G.navPinnedOpen = true;
-  var nav = document.getElementById('bnav');
-  var bar = document.getElementById('sticky-bar');
-  if (nav) nav.classList.remove('collapsed');
-  if (bar) bar.classList.remove('nav-collapsed');
-  updateBnavCollapseBtn();
-  setTimeout(repositionFloatingTimers, 50);
-}
-
-function userCollapseBnav() {
-  G.navPinnedOpen = false;
-  var nav = document.getElementById('bnav');
-  var bar = document.getElementById('sticky-bar');
-  if (nav) nav.classList.add('collapsed');
-  if (bar) bar.classList.add('nav-collapsed');
-  updateBnavCollapseBtn();
-  setTimeout(repositionFloatingTimers, 50);
-}
-
 function renderStickyBar() {
   var bar = document.getElementById('sticky-bar');
   if (bar) bar.style.display = 'none';
-  updateBnavCollapseBtn();
 }
 
 // ── Timer floating (position:fixed when trow leaves viewport) ────
