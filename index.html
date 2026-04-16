@@ -39,6 +39,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
 header{background:var(--bg);border-bottom:1px solid var(--brd);padding:14px 18px 10px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:center;gap:10px}
 .happ{display:block;height:26px;width:auto}
 .htagline{font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--hnt);border-left:1.5px solid var(--brd2);padding-left:10px;line-height:1}
+.hcook-lbl{display:none;font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--acc);border-left:1.5px solid rgba(245,192,48,0.3);padding-left:10px;line-height:1}
+.cook-exit{display:none;margin-left:auto;border:1px solid rgba(245,192,48,0.3);background:rgba(245,192,48,0.1);color:var(--acc);font-size:.72rem;font-weight:700;border-radius:8px;padding:5px 12px;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;white-space:nowrap;transition:background .15s}
+.cook-exit:hover{background:rgba(245,192,48,0.2)}
+.cook-btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;border:none;background:var(--acc);color:#1a1a1a;font-weight:700;font-size:.9rem;border-radius:12px;padding:13px 16px;cursor:pointer;margin:14px 0 2px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:opacity .15s}
+.cook-btn:active{opacity:.8}
+.cook-btn svg{width:18px;height:18px;flex-shrink:0}
+body.cooking-mode .htagline{display:none}
+body.cooking-mode .hcook-lbl{display:block}
+body.cooking-mode .cook-exit{display:flex;align-items:center}
+body.cooking-mode .bnav{display:none!important}
+body.cooking-mode .cook-btn{display:none}
 /* week tab carousel — underline style */
 .wknav{display:flex;background:var(--bg);border-bottom:1px solid var(--brd);overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:0 18px;gap:0;align-items:stretch;justify-content:center}
 .wknav::-webkit-scrollbar{display:none}
@@ -231,6 +242,8 @@ section{margin-bottom:24px}
 <header>
   <img src="logo.svg" class="happ" alt="mesa">
   <span class="htagline">Meal Plan</span>
+  <span class="hcook-lbl">🍳 Cooking</span>
+  <button class="cook-exit" onclick="exitCookingMode()">✕ Stop</button>
 </header>
 <nav class="wknav" id="wknav"></nav>
 <div id="offline-bar">No connection — showing cached data</div>
@@ -330,7 +343,8 @@ var G = {
   libTab: 'favs',
   libQ: '',
   isPast: false,        // true when the loaded week is a past week
-  vvBotOffset: 0        // px to add to fixed bottom elements (visualViewport compensation)
+  vvBotOffset: 0,       // px to add to fixed bottom elements (visualViewport compensation)
+  cookingMode: false    // true = screen wake lock active, bottom nav hidden
 };
 
 // ── Visual viewport sync (iOS/Chrome browser-chrome slide bug) ───
@@ -646,7 +660,13 @@ function setNavActive(id) {
   var nav = document.getElementById('wnav');
   nav.querySelectorAll('.wnb').forEach(function(b) { b.classList.remove('on'); });
   var btn = document.getElementById('wnb-' + id);
-  if (btn) btn.classList.add('on');
+  if (btn) {
+    btn.classList.add('on');
+    // Scroll the tab strip so the active tab is horizontally centred
+    var navRect = nav.getBoundingClientRect();
+    var btnRect = btn.getBoundingClientRect();
+    nav.scrollLeft += btnRect.left - navRect.left - (navRect.width - btnRect.width) / 2;
+  }
 }
 
 // ── Recipe view ──────────────────────────────────────────────────
@@ -680,6 +700,11 @@ function renderRecipe(meal) {
   if (meal.kcal)   html += '<span class="pill">🔥 ' + esc(meal.kcal) + ' kcal</span>';
   if (meal.people) html += '<span class="pill">👥 ' + esc(meal.people) + ' ' + (meal.people === 1 ? 'person' : 'people') + '</span>';
   html += '</div>';
+
+  // Start cooking CTA
+  html += '<button class="cook-btn" onclick="enterCookingMode()">'
+        + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16 10,8" fill="currentColor" stroke="none"/></svg>'
+        + 'Start cooking</button>';
 
   // ── left column: ingredients ──────────────────────────────────
   var ingHtml = '';
@@ -994,11 +1019,23 @@ function stopTimer(key) {
   syncWakeLock();
 }
 
+// ── Cooking mode ─────────────────────────────────────────────────
+function enterCookingMode() {
+  G.cookingMode = true;
+  document.body.classList.add('cooking-mode');
+  syncWakeLock();
+}
+function exitCookingMode() {
+  G.cookingMode = false;
+  document.body.classList.remove('cooking-mode');
+  syncWakeLock();
+}
+
 // ── Screen Wake Lock ─────────────────────────────────────────────
 var G_wakeLock = null;
 function syncWakeLock() {
   if (!('wakeLock' in navigator)) return;
-  var hasRunning = Object.keys(G.timers).some(function(k) {
+  var hasRunning = G.cookingMode || Object.keys(G.timers).some(function(k) {
     return G.timers[k] && G.timers[k].running;
   });
   if (hasRunning && !G_wakeLock) {
