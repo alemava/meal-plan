@@ -247,9 +247,10 @@ section{margin-bottom:24px}
     <span class="ub-icon">🔄</span>
     <div class="ub-text">
       <b>New version available</b><br>
-      <span>Close and reopen the app to update</span>
+      <span id="ub-msg"></span>
     </div>
-    <button class="ub-close" onclick="document.getElementById('update-banner').style.display='none'" title="Cerrar" aria-label="Cerrar">✕</button>
+    <button class="ub-close" id="ub-refresh" onclick="location.reload()" style="display:none;background:var(--grn);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation">Refresh</button>
+    <button class="ub-close" onclick="document.getElementById('update-banner').style.display='none'" title="Close" aria-label="Close">✕</button>
   </div>
 </div>
 <div id="install-banner">
@@ -470,22 +471,25 @@ function initInstallBanner() {
   if (isIOS) {
     // ALL iOS browsers (Safari, Chrome, Firefox) — WebKit, manual only
     textEl.innerHTML =
-      '<b>Add mesa to your Home Screen</b>' +
-      '<div class="ib-steps">Tap ' + ICO_IOS_SHARE + ' then <b>"Add to Home Screen"</b></div>';
+      '<b>Get the full experience</b>' +
+      '<div class="ib-steps">Add to your Home Screen. Instant access, even without internet</div>' +
+      '<div class="ib-steps" style="margin-top:4px">Tap ' + ICO_IOS_SHARE + ' then <b>"Add to Home Screen"</b></div>';
     installBtn.style.display = 'none';
     banner.style.display = 'block';
   } else if (isMacSafari) {
     // macOS Safari 17+ — manual via File menu
     textEl.innerHTML =
-      '<b>Install mesa on your Mac</b>' +
-      '<div class="ib-steps">In Safari go to <b>File</b> → <b>"Add to Dock…"</b></div>';
+      '<b>Get the full experience</b>' +
+      '<div class="ib-steps">Add to your Dock. Instant access, even without internet</div>' +
+      '<div class="ib-steps" style="margin-top:4px">In Safari: <b>File</b> → <b>"Add to Dock…"</b></div>';
     installBtn.style.display = 'none';
     banner.style.display = 'block';
   } else if (window.deferredInstallPrompt) {
     // Chrome / Edge / Android — native prompt available
+    var subtitle = 'Install the app. Instant access, even without internet';
     textEl.innerHTML =
-      '<b>Install mesa</b>' +
-      '<div class="ib-steps">Get the app — works offline too</div>';
+      '<b>Get the full experience</b>' +
+      '<div class="ib-steps">' + subtitle + '</div>';
     installBtn.style.display = '';
     banner.style.display = 'block';
   }
@@ -1534,7 +1538,18 @@ function updateNavTabLabel(mealId) {
 if ('serviceWorker' in navigator) {
   function showUpdateBanner() {
     var banner = document.getElementById('update-banner');
-    if (banner) banner.style.display = 'block';
+    if (!banner) return;
+    var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    var msg = document.getElementById('ub-msg');
+    var refreshBtn = document.getElementById('ub-refresh');
+    if (isStandalone) {
+      if (msg) msg.textContent = 'Close and reopen the app to update';
+      if (refreshBtn) refreshBtn.style.display = 'none';
+    } else {
+      if (msg) msg.textContent = 'Refresh the page to get the latest version';
+      if (refreshBtn) refreshBtn.style.display = '';
+    }
+    banner.style.display = 'block';
   }
   function trackInstallingSW(sw) {
     sw.addEventListener('statechange', function() {
