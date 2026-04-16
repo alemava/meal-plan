@@ -814,18 +814,34 @@ function updateTimerButtons(key) {
 function repositionFloatingTimers() {
   var hdr    = document.querySelector('header');
   var bnavEl = document.getElementById('bnav');
-  var topAcc = (hdr    ? hdr.offsetHeight    : 55) + 8;
-  var botAcc = (bnavEl ? bnavEl.offsetHeight : 62) + 8 + G.vvBotOffset;
+  var topBase = (hdr    ? hdr.offsetHeight    : 55) + 8;
+  var botBase = (bnavEl ? bnavEl.offsetHeight : 62) + 8 + G.vvBotOffset;
+
+  var topFloaters = [], botFloaters = [];
   Object.keys(G.timers).forEach(function(k) {
     var el = document.getElementById('trow-' + k);
     if (!el || el.style.position !== 'fixed') return;
-    if (el.style.bottom && el.style.bottom !== '') {
-      el.style.bottom = botAcc + 'px';
-      botAcc += el.offsetHeight + 8;
-    } else {
-      el.style.top = topAcc + 'px';
-      topAcc += el.offsetHeight + 8;
-    }
+    // Use placeholder page-Y so order always matches recipe order
+    var ph = document.getElementById('trow-ph-' + k);
+    var pageY = ph ? (ph.getBoundingClientRect().top + (window.pageYOffset || document.documentElement.scrollTop)) : 0;
+    if (el.style.bottom !== '') { botFloaters.push({ el: el, pageY: pageY }); }
+    else                        { topFloaters.push({ el: el, pageY: pageY }); }
+  });
+
+  // Top stack: first in page → closest to header
+  topFloaters.sort(function(a, b) { return a.pageY - b.pageY; });
+  var topAcc = topBase;
+  topFloaters.forEach(function(item) {
+    item.el.style.top = topAcc + 'px';
+    topAcc += item.el.offsetHeight + 8;
+  });
+
+  // Bottom stack: last in page → closest to nav bar
+  botFloaters.sort(function(a, b) { return b.pageY - a.pageY; });
+  var botAcc = botBase;
+  botFloaters.forEach(function(item) {
+    item.el.style.bottom = botAcc + 'px';
+    botAcc += item.el.offsetHeight + 8;
   });
 }
 
@@ -1084,23 +1100,9 @@ function floatTrow(key, below) {
   trow.style.left     = rect.left  + 'px';
   trow.style.margin   = '0';
   trow.style.zIndex   = '98';
-
-  // Compute vertical offset to avoid stacking with other floaters
-  var hdr_    = document.querySelector('header');
-  var bnavEl_ = document.getElementById('bnav');
-  var topOff  = (hdr_    ? hdr_.offsetHeight    : 55) + 8;
-  var botOff  = (bnavEl_ ? bnavEl_.offsetHeight : 62) + 8 + G.vvBotOffset;
-  Object.keys(G.timers).forEach(function(k) {
-    if (k === key) return;
-    var el = document.getElementById('trow-' + k);
-    if (el && el.style.position === 'fixed') {
-      if (el.style.top)    topOff += el.offsetHeight + 8;
-      if (el.style.bottom) botOff += el.offsetHeight + 8;
-    }
-  });
-
-  if (below) { trow.style.bottom = botOff + 'px'; trow.style.top = ''; }
-  else        { trow.style.top = topOff + 'px';   trow.style.bottom = ''; }
+  // Set side flag; repositionFloatingTimers assigns the exact vertical value
+  if (below) { trow.style.bottom = '0'; trow.style.top = ''; }
+  else        { trow.style.top   = '0'; trow.style.bottom = ''; }
 
   // Watch placeholder with the SAME rootMargin used to trigger the float so obsBack
   // doesn't fire immediately (which would cause a flicker loop).
@@ -1125,7 +1127,8 @@ function floatTrow(key, below) {
     obsBack.observe(ph);
     G.observers[key] = obsBack;
   }
-  // Refresh all inline timers so they pick up the new stacking threshold
+  // Position all floating timers by page order, then re-arm inline observers
+  repositionFloatingTimers();
   refreshTimerObservers();
 }
 
