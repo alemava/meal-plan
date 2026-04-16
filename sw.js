@@ -1,4 +1,4 @@
-var CACHE = 'mesa-v25';
+var CACHE = 'mesa-v26';
 var SHELL = [
   './index.html',
   './manifest.json',
