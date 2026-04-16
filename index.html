@@ -926,8 +926,10 @@ function timerAction(key) {
     // start / resume
     var inlineRow = document.getElementById('trow-' + key);
     if (inlineRow) inlineRow.classList.add('running');
-    t.dismissed = false;
-    t.running   = true;
+    t.dismissed       = false;
+    t.running         = true;
+    t.startedAt       = Date.now();       // wall-clock anchor
+    t.remainingAtStart = t.remaining;     // remaining when (re)started
     // Ask for notification permission on first timer start (non-blocking)
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission();
@@ -938,7 +940,8 @@ function timerAction(key) {
     }
     updateTimerButtons(key);
     t.interval  = setInterval(function() {
-      t.remaining--;
+      var elapsed = Math.floor((Date.now() - t.startedAt) / 1000);
+      t.remaining = Math.max(0, t.remainingAtStart - elapsed);
       updateTimerDisplay(key);
       renderStickyBar();
       // alert check
@@ -1044,6 +1047,13 @@ function setupTimerObserver(key) {
 
   var mg = getTimerRootMargin(key);
 
+  // Immediate check: if already off-screen, float right away instead of
+  // waiting for the async IntersectionObserver initial callback, which can
+  // be missed when the element was never intersecting when observe() is called.
+  var rect = trow.getBoundingClientRect();
+  if (rect.bottom <= mg.top) { floatTrow(key, false); return; }
+  if (rect.top >= window.innerHeight - mg.bot) { floatTrow(key, true); return; }
+
   var obs = new IntersectionObserver(function(entries) {
     if (!entries[0].isIntersecting) {
       var below = entries[0].boundingClientRect.top > window.innerHeight / 2;
@@ -1108,6 +1118,8 @@ function floatTrow(key, below) {
         }
         // Refresh all other inline timers — their stacking thresholds changed
         refreshTimerObservers();
+        // Restack any remaining floating timers now that one unfloated
+        setTimeout(repositionFloatingTimers, 50);
       }
     }, { threshold: 0, rootMargin: '-' + mg_.top + 'px 0px -' + mg_.bot + 'px 0px' });
     obsBack.observe(ph);
@@ -1524,6 +1536,31 @@ function setOffline(offline) {
 window.addEventListener('online',  function() { setOffline(false); });
 window.addEventListener('offline', function() { setOffline(true); });
 if (!navigator.onLine) setOffline(true);
+
+// When app returns from background, recalculate timers from wall clock.
+// Fixes setInterval freeze on iOS and background throttling on Android/desktop.
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState !== 'visible') return;
+  Object.keys(G.timers).forEach(function(k) {
+    var t = G.timers[k];
+    if (!t || !t.running || !t.startedAt) return;
+    var elapsed = Math.floor((Date.now() - t.startedAt) / 1000);
+    t.remaining = Math.max(0, t.remainingAtStart - elapsed);
+    updateTimerDisplay(k);
+    renderStickyBar();
+    if (t.remaining <= 0) {
+      t.remaining = 0;
+      stopTimer(k);
+      updateTimerDisplay(k);
+      updateTimerButtons(k);
+      renderStickyBar();
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' &&
+          navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'TIMER_DONE', label: t.label || 'Timer' });
+      }
+    }
+  });
+});
 </script>
 </body>
 </html>
