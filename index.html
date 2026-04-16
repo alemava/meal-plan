@@ -39,14 +39,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
 header{background:var(--bg);border-bottom:1px solid var(--brd);padding:14px 18px 10px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:center;gap:10px}
 .happ{display:block;height:26px;width:auto}
 .htagline{font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--hnt);border-left:1.5px solid var(--brd2);padding-left:10px;line-height:1}
-.hcook-lbl{display:none;font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--acc);border-left:1.5px solid rgba(245,192,48,0.3);padding-left:10px;line-height:1}
-.cook-exit{display:none;margin-left:auto;border:1px solid rgba(245,192,48,0.3);background:rgba(245,192,48,0.1);color:var(--acc);font-size:.72rem;font-weight:700;border-radius:8px;padding:5px 12px;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;white-space:nowrap;transition:background .15s}
-.cook-exit:hover{background:rgba(245,192,48,0.2)}
+.hcook-lbl{display:none;align-items:center;gap:7px;font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--acc);border-left:1.5px solid var(--brd2);padding-left:10px;line-height:1}
+.cook-ring{position:relative;width:14px;height:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.cook-ring-dot{width:7px;height:7px;border-radius:50%;background:var(--acc);flex-shrink:0}
+.cook-ring-pulse{position:absolute;inset:0;margin:auto;width:7px;height:7px;border-radius:50%;border:1.5px solid var(--acc);animation:ring-expand 1.6s ease-out infinite}
+@keyframes ring-expand{0%{transform:scale(1);opacity:.9}100%{transform:scale(2.8);opacity:0}}
+.cook-exit{display:none;margin-left:auto;border:1px solid var(--acb);background:var(--acl);color:var(--acc);font-size:.72rem;font-weight:700;border-radius:8px;padding:5px 12px;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;white-space:nowrap;transition:background .15s}
+.cook-exit:hover{background:var(--acb)}
 .cook-btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;border:none;background:var(--acc);color:#1a1a1a;font-weight:700;font-size:.9rem;border-radius:12px;padding:13px 16px;cursor:pointer;margin:14px 0 2px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:opacity .15s}
 .cook-btn:active{opacity:.8}
 .cook-btn svg{width:18px;height:18px;flex-shrink:0}
 body.cooking-mode .htagline{display:none}
-body.cooking-mode .hcook-lbl{display:block}
+body.cooking-mode .hcook-lbl{display:flex}
 body.cooking-mode .cook-exit{display:flex;align-items:center}
 body.cooking-mode .bnav{display:none!important}
 body.cooking-mode .cook-btn{display:none}
@@ -243,7 +247,7 @@ section{margin-bottom:24px}
 <header>
   <img src="logo.svg" class="happ" alt="mesa">
   <span class="htagline">Meal Plan</span>
-  <span class="hcook-lbl">🍳 Cooking</span>
+  <span class="hcook-lbl"><span class="cook-ring"><span class="cook-ring-dot"></span><span class="cook-ring-pulse"></span></span>Cooking</span>
   <button class="cook-exit" onclick="exitCookingMode()">✕ Stop</button>
 </header>
 <nav class="wknav" id="wknav"></nav>
