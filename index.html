@@ -946,6 +946,7 @@ function timerAction(key) {
     t.running         = true;
     t.startedAt       = Date.now();       // wall-clock anchor
     t.remainingAtStart = t.remaining;     // remaining when (re)started
+    syncWakeLock();
     // Ask for notification permission on first timer start (non-blocking)
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission();
@@ -990,6 +991,25 @@ function stopTimer(key) {
   if (!t) return;
   if (t.interval) { clearInterval(t.interval); t.interval = null; }
   t.running = false;
+  syncWakeLock();
+}
+
+// ── Screen Wake Lock ─────────────────────────────────────────────
+var G_wakeLock = null;
+function syncWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  var hasRunning = Object.keys(G.timers).some(function(k) {
+    return G.timers[k] && G.timers[k].running;
+  });
+  if (hasRunning && !G_wakeLock) {
+    navigator.wakeLock.request('screen').then(function(lock) {
+      G_wakeLock = lock;
+      lock.addEventListener('release', function() { G_wakeLock = null; });
+    }).catch(function() {});
+  } else if (!hasRunning && G_wakeLock) {
+    G_wakeLock.release();
+    G_wakeLock = null;
+  }
 }
 
 function updateTimerDisplay(key) {
@@ -1544,6 +1564,7 @@ if (!navigator.onLine) setOffline(true);
 // Fixes setInterval freeze on iOS and background throttling on Android/desktop.
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState !== 'visible') return;
+  syncWakeLock(); // re-request if timers are still running (OS releases lock on background)
   Object.keys(G.timers).forEach(function(k) {
     var t = G.timers[k];
     if (!t || !t.running || !t.startedAt) return;
