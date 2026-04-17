@@ -714,7 +714,7 @@ function renderRecipe(meal) {
   // ── left column: ingredients ──────────────────────────────────
   var ingHtml = '';
   if (meal.ingredients && meal.ingredients.length) {
-    ingHtml += '<section style="margin-top:14px">';
+    ingHtml += '<section style="margin-top:14px;margin-bottom:0">';
     ingHtml += '<div class="slbl acc">Ingredients</div>';
     if (G.isPast) {
       // past week: plain tappable list, no availability badges
@@ -768,7 +768,7 @@ function renderRecipe(meal) {
   // ── right column: steps ──────────────────────────────────────
   var stepsHtml = '';
   if (meal.steps && meal.steps.length) {
-    stepsHtml += '<section style="margin-top:14px">';
+    stepsHtml += '<section style="margin-top:14px;margin-bottom:0">';
     stepsHtml += '<div class="slbl acc">Steps</div>';
     stepsHtml += '<div class="steps">';
     meal.steps.forEach(function(step, si) {
