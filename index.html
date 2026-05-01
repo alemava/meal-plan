@@ -977,10 +977,6 @@ function timerAction(key) {
     t.startedAt       = Date.now();       // wall-clock anchor
     t.remainingAtStart = t.remaining;     // remaining when (re)started
     syncWakeLock();
-    // Ask for notification permission on first timer start (non-blocking)
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
     // If trow is already floating keep the placeholder observer — don't disturb float state
     if (!inlineRow || inlineRow.style.position !== 'fixed') {
       setupTimerObserver(key);
@@ -1005,11 +1001,6 @@ function timerAction(key) {
         updateTimerDisplay(key);
         updateTimerButtons(key);
         renderStickyBar();
-        // Notify via SW if app is backgrounded
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted' &&
-            navigator.serviceWorker && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({ type: 'TIMER_DONE', label: t.label || 'Timer' });
-        }
       }
     }, 1000);
   }
@@ -1346,13 +1337,12 @@ function markAllBought() {
 
 async function persistShopState() {
   try {
-    await sbFetch('/rest/v1/shopping_state?week_id=eq.' + encodeURIComponent(G.week.id), {
-      method: 'PATCH',
-      headers: {'Prefer': 'return=minimal'},
-      body: JSON.stringify({state: G.shopState, updated_at: new Date().toISOString()})
+    await sbFetch('/rest/v1/shopping_state', {
+      method: 'POST',
+      headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify({week_id: G.week.id, state: G.shopState, updated_at: new Date().toISOString()})
     });
   } catch(e) {
-    // silently ignore – UI already updated
     console.warn('Shopping state save failed:', e.message);
   }
 }
@@ -1620,10 +1610,6 @@ document.addEventListener('visibilitychange', function() {
       updateTimerDisplay(k);
       updateTimerButtons(k);
       renderStickyBar();
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' &&
-          navigator.serviceWorker && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ type: 'TIMER_DONE', label: t.label || 'Timer' });
-      }
     }
   });
 });

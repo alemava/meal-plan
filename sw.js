@@ -1,4 +1,4 @@
-var CACHE = 'mesa-v32';
+var CACHE = 'mesa-v33';
 var SHELL = [
   './index.html',
   './manifest.json',
@@ -23,23 +23,6 @@ self.addEventListener('activate', function(e) {
     })
   );
   return self.clients.claim();
-});
-
-self.addEventListener('message', function(e) {
-  if (!e.data || e.data.type !== 'TIMER_DONE') return;
-  var label = e.data.label || 'Timer';
-  self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then(function(clients) {
-    var anyVisible = clients.some(function(c) { return c.visibilityState === 'visible'; });
-    if (anyVisible) return; // app is in foreground — skip notification
-    return self.registration.showNotification('\u23f1 ' + label, {
-      body: 'Timer finished!',
-      icon: './icon.svg',
-      badge: './icon.svg',
-      tag: 'timer-' + label,
-      renotify: true,
-      silent: false
-    });
-  });
 });
 
 self.addEventListener('fetch', function(e) {
