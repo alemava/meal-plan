@@ -624,9 +624,19 @@ function mealTabLabel(m) {
 function renderDayNav(week) {
   var nav   = document.getElementById('wnav');
   var meals = week.meals || [];
-  // Shopping tab first, then regular meals, then specials at the end
+  // Shopping tab first, then regular meals sorted by day, then specials at the end
+  var DAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  var MEAL_ORDER = ['breakfast','lunch','dinner'];
   var regular  = meals.filter(function(m) { return m.meal_type !== 'special'; });
   var specials = meals.filter(function(m) { return m.meal_type === 'special'; });
+  regular.sort(function(a, b) {
+    var da = DAY_ORDER.indexOf(a.label), db = DAY_ORDER.indexOf(b.label);
+    if (da === -1) da = 99; if (db === -1) db = 99;
+    if (da !== db) return da - db;
+    var ma = MEAL_ORDER.indexOf(a.meal_type), mb = MEAL_ORDER.indexOf(b.meal_type);
+    if (ma === -1) ma = 99; if (mb === -1) mb = 99;
+    return ma - mb;
+  });
   var ordered  = regular.concat(specials);
   var html = G.isPast ? '' : '<button class="wnb shop-tab" id="wnb-shop" onclick="showShop()">🛒 Shopping</button>';
   html += ordered.map(function(m) {
