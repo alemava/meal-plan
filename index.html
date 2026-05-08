@@ -1607,9 +1607,27 @@ if (!navigator.onLine) setOffline(true);
 
 // When app returns from background, recalculate timers from wall clock.
 // Fixes setInterval freeze on iOS and background throttling on Android/desktop.
+async function refreshWeeks() {
+  try {
+    var weeks = await sbFetch('/rest/v1/meal_weeks?select=id,title,subtitle,week_type,week_start&order=week_start.asc');
+    // check if anything changed before re-rendering
+    var oldIds = (G.weeks || []).map(function(w) { return w.id; }).join(',');
+    var newIds = weeks.map(function(w) { return w.id; }).join(',');
+    if (oldIds === newIds) return; // nothing new, don't touch the UI
+    G.weeks = weeks;
+    var thisMonday = thisWeekMonday();
+    var past    = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'past'; });
+    var current = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'current'; });
+    var future  = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'future'; });
+    var shown   = past.slice(-1).concat(current).concat(future.slice(0,1));
+    renderWeekCarousel(shown, thisMonday);
+  } catch(e) { /* silent fail — don't disrupt the user */ }
+}
+
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState !== 'visible') return;
   syncWakeLock(); // re-request if timers are still running (OS releases lock on background)
+  refreshWeeks(); // silently refresh week list in case new recipes were uploaded
   Object.keys(G.timers).forEach(function(k) {
     var t = G.timers[k];
     if (!t || !t.running || !t.startedAt) return;
