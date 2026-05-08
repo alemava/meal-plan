@@ -1610,17 +1610,27 @@ if (!navigator.onLine) setOffline(true);
 async function refreshWeeks() {
   try {
     var weeks = await sbFetch('/rest/v1/meal_weeks?select=id,title,subtitle,week_type,week_start&order=week_start.asc');
-    // check if anything changed before re-rendering
-    var oldIds = (G.weeks || []).map(function(w) { return w.id; }).join(',');
-    var newIds = weeks.map(function(w) { return w.id; }).join(',');
-    if (oldIds === newIds) return; // nothing new, don't touch the UI
-    G.weeks = weeks;
     var thisMonday = thisWeekMonday();
     var past    = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'past'; });
     var current = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'current'; });
     var future  = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'future'; });
     var shown   = past.slice(-1).concat(current).concat(future.slice(0,1));
-    renderWeekCarousel(shown, thisMonday);
+
+    // update carousel if week list changed
+    var oldIds = (G.weeks || []).map(function(w) { return w.id; }).join(',');
+    var newIds = weeks.map(function(w) { return w.id; }).join(',');
+    G.weeks = weeks;
+    if (oldIds !== newIds) renderWeekCarousel(shown, thisMonday);
+
+    // check if current week has new meals (fetch only meals column)
+    if (G.week) {
+      var freshArr = await sbFetch('/rest/v1/meal_weeks?id=eq.' + encodeURIComponent(G.week.id) + '&select=id,meals');
+      var freshMeals = (freshArr && freshArr[0] && freshArr[0].meals) || [];
+      if (freshMeals.length !== (G.week.meals || []).length) {
+        G.week.meals = freshMeals;
+        renderDayNav(G.week); // add new meal tabs without disrupting current view
+      }
+    }
   } catch(e) { /* silent fail — don't disrupt the user */ }
 }
 
