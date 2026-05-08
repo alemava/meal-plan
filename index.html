@@ -1234,39 +1234,42 @@ function renderShopList(week) {
   meals.forEach(function(meal) {
     (meal.ingredients || []).forEach(function(ing) {
       var k = ingKey(ing.name);
-      if (!map[k]) map[k] = {name: ing.name, meals: [], avail: ing.avail, qtys: []};
+      if (!map[k]) map[k] = {name: ing.name, meals: [], avail: ing.avail, needsBuying: !ing.avail, qtys: [], buyQtys: [], availQtys: []};
       if (map[k].meals.indexOf(meal.label) === -1) map[k].meals.push(meal.label);
-      if (ing.avail) map[k].avail = true;
+      if (ing.avail) { map[k].avail = true; if (ing.qty) map[k].availQtys.push(ing.qty); }
+      if (!ing.avail) { map[k].needsBuying = true; if (ing.qty) map[k].buyQtys.push(ing.qty); }
       if (ing.qty) map[k].qtys.push(ing.qty);
     });
   });
 
   // resolve display status for each key
+  // an ingredient can appear in both tobuy AND avail if it has mixed avail values across recipes
   var avail = [], tobuy = [], bought = [];
   Object.keys(map).forEach(function(k) {
     var item = map[k];
     var st = G.shopState[k];
-    if (item.avail || st === 'avail') {
-      avail.push({key: k, item: item});
-    } else if (st === 'bought') {
+    if (st === 'bought') {
       bought.push({key: k, item: item});
     } else {
-      tobuy.push({key: k, item: item});
+      if (item.needsBuying) tobuy.push({key: k, item: item});
+      if (item.avail || st === 'avail') avail.push({key: k, item: item});
     }
   });
 
-  var total    = avail.length + tobuy.length + bought.length;
-  var doneCount = avail.length + bought.length;
+  // count unique ingredients; mixed items (in both tobuy + avail) count once as not-done
+  var pureAvail = avail.filter(function(e) { return !e.item.needsBuying; });
+  var total    = tobuy.length + bought.length + pureAvail.length;
+  var doneCount = bought.length + pureAvail.length;
 
   var html = '<div class="shop-hdr">';
   html += '<div class="shop-ttl">Shopping List</div>';
   html += '<div class="shop-sts">' + doneCount + ' of ' + total + ' bought</div>';
   html += '</div>';
 
-  function renderGroup(items, cls, tagCls, tagTxt, icon, clickable) {
+  function renderGroup(items, cls, tagCls, tagTxt, icon, clickable, qtysField) {
     return items.map(function(entry) {
       var onclick = clickable ? ' onclick="toggleShopItem(\'' + esc(entry.key) + '\')"' : '';
-      var qtys = entry.item.qtys || [];
+      var qtys = (qtysField && entry.item[qtysField] && entry.item[qtysField].length ? entry.item[qtysField] : null) || entry.item.qtys || [];
       var qtyHtml = '';
       if (qtys.length === 1) {
         qtyHtml = ' <span class="sn-qty-line">' + esc(qtys[0]) + '</span>';
@@ -1290,15 +1293,15 @@ function renderShopList(week) {
       + '<span class="slbl acc" style="margin-bottom:0">To buy</span>'
       + '<button class="mark-all-btn" onclick="markAllBought()">✓ Mark all as bought</button>'
       + '</div>';
-    html += '<ul class="slist">' + renderGroup(tobuy, 'tobuy', 'ttb', 'Buy', '', true) + '</ul>';
+    html += '<ul class="slist">' + renderGroup(tobuy, 'tobuy', 'ttb', 'Buy', '', true, 'buyQtys') + '</ul>';
   }
   if (avail.length) {
     html += '<div class="slbl grn" style="margin-top:16px">Already have</div>';
-    html += '<ul class="slist">' + renderGroup(avail, 'avail', 'tav', 'Got it', '✓', false) + '</ul>';
+    html += '<ul class="slist">' + renderGroup(avail, 'avail', 'tav', 'Got it', '✓', false, 'availQtys') + '</ul>';
   }
   if (bought.length) {
     html += '<div class="slbl gry" style="margin-top:16px">Bought</div>';
-    html += '<ul class="slist">' + renderGroup(bought, 'bought', 'tbt', 'Bought', '✓', true) + '</ul>';
+    html += '<ul class="slist">' + renderGroup(bought, 'bought', 'tbt', 'Bought', '✓', true, 'buyQtys') + '</ul>';
   }
   if (!total) {
     html += '<div class="empty">No ingredients found.</div>';
