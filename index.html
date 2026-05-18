@@ -129,7 +129,17 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .tav{background:var(--gnb);color:var(--grn)}.ttb{background:var(--acl);color:var(--acc)}.tbt{background:var(--srf);color:var(--mut)}
 
 .rw{position:relative;background:var(--wht);border:1px solid var(--brd);border-radius:16px;padding:18px 18px 16px;box-shadow:var(--shd);overflow:hidden}
-.fbtn{position:absolute;top:14px;right:14px;background:none;border:none;font-size:1.5rem;cursor:pointer;padding:4px;z-index:2;-webkit-tap-highlight-color:transparent;line-height:1;color:var(--acc)}
+.rxn{position:absolute;top:12px;right:12px;z-index:2;display:flex;align-items:center}
+.rxn-btn{width:32px;height:32px;margin-right:5px;border:1.5px solid var(--brd2);border-radius:50%;background:var(--bg);font-size:.95rem;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;overflow:hidden;flex-shrink:0;opacity:.38;transition:width .22s ease,opacity .22s ease,transform .22s ease,margin-right .22s ease}
+.rxn-btn:last-child{margin-right:0}
+.rxn-btn:hover{opacity:.72}
+.rw:has(.rhero) .rxn-btn{background:rgba(255,255,255,.88);border-color:transparent;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.rxn.has-sel .rxn-btn:not(.sel){width:0;margin-right:0;opacity:0}
+.rxn.has-sel .rxn-btn.sel{opacity:1;transform:scale(1.1)}
+.rxn.has-sel:hover .rxn-btn{width:32px;margin-right:5px;opacity:.38}
+.rxn.has-sel:hover .rxn-btn:last-child{margin-right:0}
+.rxn.has-sel:hover .rxn-btn.sel{opacity:1;transform:scale(1.1)}
+.rxn.has-sel:hover .rxn-btn:not(.sel):hover{opacity:.72}
 .rtitle{font-size:1.2rem;font-weight:700;line-height:1.3;padding-right:36px;letter-spacing:-0.02em;color:var(--txt)}
 .rmeta-date{font-size:.72rem;color:var(--mut);font-weight:500;margin:3px 0 6px}
 .rmeta{display:flex;gap:14px;margin-top:6px;flex-wrap:wrap;align-items:center}
@@ -144,7 +154,6 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .rhero-ttl{font-size:1.15rem;font-weight:700;color:#fff;line-height:1.22;letter-spacing:-0.025em;padding-right:42px;text-shadow:0 1px 8px rgba(0,0,0,.5)}
 .rhero-sub{font-size:.78rem;color:rgba(255,255,255,.85);font-weight:600;margin-top:4px;text-shadow:0 1px 4px rgba(0,0,0,.5)}
 @media(min-width:640px){.rhero-ttl{font-size:1.75rem;line-height:1.18}.rhero-sub{font-size:.9rem}}
-.rw:has(.rhero) .fbtn{background:rgba(255,255,255,.88);border-radius:50%;width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 
 section{margin-bottom:24px}
 .ing-list{list-style:none;background:var(--wht);border:1px solid var(--brd);border-radius:14px;padding:4px 16px;box-shadow:var(--shd)}
@@ -216,6 +225,10 @@ section{margin-bottom:24px}
 .chev.open{transform:rotate(90deg)}
 .card-body{display:none;padding:4px 16px 16px;border-top:1px solid var(--brd)}
 .card-body.open{display:block}
+.view-recipe-btn{display:block;margin-top:14px;width:100%;padding:11px;border:1px solid var(--brd2);border-radius:10px;background:transparent;font-size:.82rem;font-weight:600;color:var(--acc);cursor:pointer;text-align:center;-webkit-tap-highlight-color:transparent;transition:background .15s}
+.view-recipe-btn:hover{background:var(--bgl)}
+.lib-back{display:inline-flex;align-items:center;gap:4px;padding:8px 16px;margin-bottom:14px;border:1px solid var(--brd2);border-radius:999px;background:var(--wht);font-size:.82rem;font-weight:600;color:var(--txt);cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:var(--shd)}
+.lib-back:hover{background:var(--bgl)}
 
 .sinput{width:100%;padding:11px 16px;border:1px solid var(--brd2);border-radius:12px;font-size:.89rem;background:var(--wht);outline:none;-webkit-appearance:none;color:var(--txt);font-family:inherit;transition:all .15s;box-shadow:var(--shd)}
 .sinput::placeholder{color:var(--hnt)}
@@ -337,6 +350,9 @@ async function sbFetch(path, opts) {
     var r = await fetch(SB + path, merged);
     clearTimeout(tid);
     if (!r.ok) throw new Error(r.status + ' ' + await r.text());
+    if (r.status === 204) return null;
+    var ct = r.headers.get('content-type') || '';
+    if (!ct.includes('json')) return null;
     return r.json();
   } catch(e) {
     clearTimeout(tid);
@@ -351,12 +367,14 @@ var G = {
   day: null,
   shopState: {},
   favSet: new Set(),
+  reactionMap: {},      // meal_id → 'fav'|'like'|'dislike' for current week
   timers: {},
   observers: {},        // IntersectionObservers keyed by timer key
   view: 'plan',
   libTab: 'favs',
   libQ: '',
   isPast: false,        // true when the loaded week is a past week
+  isLibView: false,     // true when viewing a recipe from the library (read-only)
   vvBotOffset: 0,       // px to add to fixed bottom elements (visualViewport compensation)
   cookingMode: false    // true = screen wake lock active, bottom nav hidden
 };
@@ -584,7 +602,7 @@ async function loadWeek(id) {
     var results = await Promise.all([
       sbFetch('/rest/v1/meal_weeks?id=eq.' + encodeURIComponent(id) + '&select=*'),
       sbFetch('/rest/v1/shopping_state?week_id=eq.' + encodeURIComponent(id) + '&select=state'),
-      sbFetch('/rest/v1/favourites?week_id=eq.' + encodeURIComponent(id) + '&select=meal_id')
+      sbFetch('/rest/v1/favourites?week_id=eq.' + encodeURIComponent(id) + '&select=meal_id,reaction')
     ]);
 
     var weekArr = results[0];
@@ -594,7 +612,9 @@ async function loadWeek(id) {
     }
     G.week = weekArr[0];
     G.shopState = (results[1] && results[1][0] && results[1][0].state) || {};
-    G.favSet = new Set((results[2] || []).map(function(f) { return f.meal_id; }));
+    G.reactionMap = {};
+    (results[2] || []).forEach(function(f) { G.reactionMap[f.meal_id] = f.reaction || 'fav'; });
+    G.favSet = new Set(Object.keys(G.reactionMap).filter(function(k) { return G.reactionMap[k] === 'fav'; }));
     G.isPast = weekRelative(G.week.week_start, thisWeekMonday()) === 'past';
 
     // highlight active carousel tab
@@ -620,16 +640,16 @@ async function loadWeek(id) {
 
 // ── Day navigation ───────────────────────────────────────────────
 function mealTabLabel(m) {
+  var rxn = G.reactionMap[m.id];
+  var prefix = rxn === 'fav' ? '❤️ ' : rxn === 'like' ? '👍 ' : rxn === 'dislike' ? '👎 ' : '';
   if (m.meal_type === 'special') {
-    // special dishes: just show the dish name with a star, no day prefix
-    return (G.favSet.has(m.id) ? '♥ ' : '⭐ ') + esc(m.label);
+    return (prefix || '⭐ ') + esc(m.label);
   }
-  var heart  = G.favSet.has(m.id) ? '♥ ' : '';
   var suffix = m.meal_type === 'breakfast' ? ' 🌅 Breakfast'
              : m.meal_type === 'lunch'     ? ' 🍽 Lunch'
              : m.meal_type === 'dinner'    ? ' 🍽 Dinner'
              : '';
-  return heart + esc(m.label) + suffix;
+  return prefix + esc(m.label) + suffix;
 }
 
 function renderDayNav(week) {
@@ -706,13 +726,16 @@ function showDay(dayId) {
 }
 
 function renderRecipe(meal) {
-  var isFav = G.favSet.has(meal.id);
-  var pt    = parseTitle(meal.title);
-  var html  = '';
+  var pt  = parseTitle(meal.title);
+  var rxn = G.reactionMap[meal.id] || null;
+  var html = '';
 
-  // fav button
-  html += '<button class="fbtn" id="fbtn-' + esc(meal.id) + '" onclick="toggleFav(' + "'" + esc(meal.id) + "'" + ')" title="' + (isFav ? 'Remove favourite' : 'Add favourite') + '">'
-    + (isFav ? '♥' : '♡') + '</button>';
+  // reaction widget (like / fav / dislike)
+  html += '<div class="rxn' + (rxn ? ' has-sel' : '') + '" id="rxn-' + esc(meal.id) + '">';
+  html += '<button class="rxn-btn rxn-like' + (rxn === 'like'    ? ' sel' : '') + '" onclick="setReaction(\'' + esc(meal.id) + '\',\'like\')"    title="Like">👍</button>';
+  html += '<button class="rxn-btn rxn-fav'  + (rxn === 'fav'     ? ' sel' : '') + '" onclick="setReaction(\'' + esc(meal.id) + '\',\'fav\')"     title="Favourite">❤️</button>';
+  html += '<button class="rxn-btn rxn-dis'  + (rxn === 'dislike' ? ' sel' : '') + '" onclick="setReaction(\'' + esc(meal.id) + '\',\'dislike\')" title="Dislike">👎</button>';
+  html += '</div>';
 
   // hero image with title overlay, or standalone title
   if (meal.image_url) {
@@ -746,7 +769,18 @@ function renderRecipe(meal) {
   if (meal.ingredients && meal.ingredients.length) {
     ingHtml += '<section style="margin-top:14px;margin-bottom:0">';
     ingHtml += '<div class="slbl acc">Ingredients</div>';
-    if (G.isPast) {
+    if (G.isLibView) {
+      // library view: static bullet list, no interaction
+      ingHtml += '<ul style="list-style:none;padding:0;margin:0">';
+      meal.ingredients.forEach(function(ing) {
+        ingHtml += '<li style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--brd);font-size:.87rem;font-weight:500;color:var(--txt)">'
+          + '<span style="color:var(--mut);flex-shrink:0">•</span>'
+          + '<span>' + esc(ing.name)
+          + (ing.qty ? ' <span style="font-weight:400;color:var(--mut)">' + esc(ing.qty) + '</span>' : '')
+          + '</span></li>';
+      });
+      ingHtml += '</ul>';
+    } else if (G.isPast) {
       // past week: plain tappable list, no availability badges
       ingHtml += '<ul class="plain-list">';
       meal.ingredients.forEach(function(ing) {
@@ -785,15 +819,7 @@ function renderRecipe(meal) {
     ingHtml += '</section>';
   }
 
-  // remaining available (also left column)
   var remHtml = '';
-  if (meal.remaining && meal.remaining.length) {
-    remHtml += '<div class="rembox" style="margin-top:14px;margin-bottom:0">';
-    remHtml += '<div class="slbl acc">Remaining after this recipe</div>';
-    remHtml += '<ul class="remlist">';
-    meal.remaining.forEach(function(r) { remHtml += '<li class="remitem">' + esc(r) + '</li>'; });
-    remHtml += '</ul></div>';
-  }
 
   // ── right column: steps ──────────────────────────────────────
   var stepsHtml = '';
@@ -1385,6 +1411,16 @@ function showWeekView() {
   document.getElementById('bp').classList.add('on');
   document.getElementById('bl').classList.remove('on');
   G.view = 'plan';
+  // Restore plan state if we were inside a lib recipe view
+  if (window._libSavedWeek !== undefined) {
+    G.week        = window._libSavedWeek;
+    G.favSet      = window._libSavedFavSet;
+    G.reactionMap = window._libSavedReactionMap || {};
+    G.isPast      = window._libSavedIsPast;
+    G.shopState   = window._libSavedShopState;
+    window._libSavedWeek = undefined;
+  }
+  G.isLibView = false;
   if (G.week) {
     renderDayNav(G.week);
     var day = G.day || (G.week.meals && G.week.meals[0] && G.week.meals[0].id);
@@ -1406,10 +1442,13 @@ async function showLib(tab) {
 
   try {
     var results = await Promise.all([
-      sbFetch('/rest/v1/favourites?select=*&order=created_at.desc'),
-      sbFetch('/rest/v1/meal_weeks?select=id,title,meals,week_start&order=week_start.desc')
+      sbFetch('/rest/v1/favourites?reaction=eq.fav&select=*&order=created_at.desc'),
+      sbFetch('/rest/v1/meal_weeks?select=id,title,meals,week_start&order=week_start.desc'),
+      sbFetch('/rest/v1/favourites?select=id,meal_id,week_id,reaction')
     ]);
     window._libAllWeeks = results[1];
+    window._libReactions = {};
+    (results[2] || []).forEach(function(r) { window._libReactions[r.week_id + '-' + r.meal_id] = r.reaction; });
     renderLib(results[0]);
   } catch(e) {
     setMain('<div class="err-box">Failed to load library:\n' + e.message + '</div>');
@@ -1428,7 +1467,7 @@ function renderLib(favs) {
   // tabs
   html += '<div class="lib-tabs">';
   var favKeySet = new Set(favs.map(function(f) { return f.week_id + '-' + f.meal_id; }));
-  html += '<button class="ltab' + (tab === 'favs' ? ' on' : '') + '" onclick="libTab(\'favs\',window._libFavs)">♥ Favourites</button>';
+  html += '<button class="ltab' + (tab === 'favs' ? ' on' : '') + '" onclick="libTab(\'favs\',window._libFavs)">❤️ Favourites</button>';
   html += '<button class="ltab' + (tab === 'all' ? ' on' : '') + '" onclick="libTab(\'all\',window._libFavs)">📖 All Recipes</button>';
   html += '</div>';
 
@@ -1449,6 +1488,13 @@ function renderLib(favs) {
         });
       });
     });
+    // sort: fav → like → null → dislike
+    var _ro = { fav: 0, like: 1, dislike: 3 };
+    items.sort(function(a, b) {
+      var ra = (window._libReactions || {})[a.week_id + '-' + a.meal_id];
+      var rb = (window._libReactions || {})[b.week_id + '-' + b.meal_id];
+      return (_ro[ra] !== undefined ? _ro[ra] : 2) - (_ro[rb] !== undefined ? _ro[rb] : 2);
+    });
   }
 
   if (q) {
@@ -1467,9 +1513,10 @@ function renderLib(favs) {
       html += '<div class="card">';
       html += '<div class="card-hdr" onclick="toggleCard(\'' + esc(cardId) + '\')">';
       html += '<div class="card-info">';
-      var isFav = (tab === 'favs') || favKeySet.has(f.week_id + '-' + f.meal_id);
       var pt = parseTitle(m.title);
-      html += '<div class="card-ttl">' + (isFav ? '♥ ' : '') + esc(pt.dish || m.title || m.label) + '</div>';
+      var _rxn = (window._libReactions || {})[f.week_id + '-' + f.meal_id];
+      var _rxnIcon = _rxn === 'fav' ? '❤️ ' : _rxn === 'like' ? '👍 ' : _rxn === 'dislike' ? '👎 ' : '';
+      html += '<div class="card-ttl">' + _rxnIcon + esc(pt.dish || m.title || m.label) + '</div>';
       var sub = [];
       if (pt.meta)  sub.push(pt.meta);
       if (m.time)   sub.push('⏱ ' + m.time);
@@ -1485,17 +1532,17 @@ function renderLib(favs) {
       if (m.ingredients && m.ingredients.length) {
         html += '<div style="padding-top:10px">';
         html += '<div class="slbl acc">Ingredients</div>';
-        html += '<ul class="ing-list">';
+        html += '<ul style="list-style:none;padding:0;margin:0">';
         m.ingredients.forEach(function(ing) {
-          var cls = ing.avail ? 'iav' : 'itb';
-          var icon = ing.avail ? '✓' : '•';
-          html += '<li class="ii ' + cls + '"><span class="ico">' + icon + '</span>'
-            + esc(ing.name)
-            + (ing.qty ? ' <span style="font-size:.75rem;color:var(--mut);font-weight:400">' + esc(ing.qty) + '</span>' : '')
-            + '</li>';
+          html += '<li style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--brd);font-size:.87rem;font-weight:500;color:var(--txt)">'
+            + '<span style="color:var(--mut);flex-shrink:0">•</span>'
+            + '<span>' + esc(ing.name)
+            + (ing.qty ? ' <span style="font-weight:400;color:var(--mut)">' + esc(ing.qty) + '</span>' : '')
+            + '</span></li>';
         });
         html += '</ul></div>';
       }
+      html += '<button class="view-recipe-btn" onclick="showLibRecipe(\'' + esc(f.week_id) + '\',\'' + esc(f.meal_id) + '\')">View full recipe →</button>';
       html += '</div></div>';
     });
   }
@@ -1520,51 +1567,99 @@ function libTab(tab, favs) {
 function libSearch(q, favs) {
   G.libQ = q;
   renderLib(favs || window._libFavs || []);
+  var inp = document.querySelector('.sinput');
+  if (inp) { inp.focus(); var l = inp.value.length; inp.setSelectionRange(l, l); }
 }
 
-// ── Favourites ───────────────────────────────────────────────────
-async function toggleFav(mealId) {
+function showLibRecipe(weekId, mealId) {
+  var week = (window._libAllWeeks || []).find(function(w) { return w.id === weekId; });
+  if (!week) return;
+  var meal = (week.meals || []).find(function(m) { return m.id === mealId; });
+  if (!meal) return;
+
+  // Snapshot plan state so the Plan button still works correctly after returning
+  window._libSavedWeek        = G.week;
+  window._libSavedFavSet      = G.favSet;
+  window._libSavedReactionMap = G.reactionMap;
+  window._libSavedIsPast      = G.isPast;
+  window._libSavedShopState   = G.shopState;
+
+  G.week        = week;
+  G.reactionMap = {};
+  var _pfx = weekId + '-';
+  Object.keys(window._libReactions || {}).forEach(function(k) {
+    if (k.indexOf(_pfx) === 0) G.reactionMap[k.slice(_pfx.length)] = window._libReactions[k];
+  });
+  G.favSet    = new Set(Object.keys(G.reactionMap).filter(function(k) { return G.reactionMap[k] === 'fav'; }));
+  G.isPast    = false;
+  G.isLibView = true;
+  G.shopState = {};
+
+  var html = '<button class="lib-back" onclick="goBackToLib()">‹ Back</button>';
+  html += '<div class="rw">' + renderRecipe(meal) + '</div>';
+  setMain(html);
+  bindTimers(meal);
+}
+
+function goBackToLib() {
+  if (window._libSavedWeek !== undefined) {
+    G.week        = window._libSavedWeek;
+    G.favSet      = window._libSavedFavSet;
+    G.reactionMap = window._libSavedReactionMap || {};
+    G.isPast      = window._libSavedIsPast;
+    G.shopState   = window._libSavedShopState;
+  }
+  G.isLibView = false;
+  renderLib(window._libFavs);
+}
+
+// ── Reactions ────────────────────────────────────────────────────
+function updateRxnWidget(mealId, reaction) {
+  var w = document.getElementById('rxn-' + mealId);
+  if (!w) return;
+  w.className = 'rxn' + (reaction ? ' has-sel' : '');
+  ['like','fav','dis'].forEach(function(r) {
+    var btn = w.querySelector('.rxn-' + r);
+    if (btn) btn.classList.toggle('sel', (r === 'dis' ? 'dislike' : r) === reaction);
+  });
+}
+
+async function setReaction(mealId, reaction) {
   var meal = (G.week.meals || []).find(function(m) { return m.id === mealId; });
   if (!meal) return;
 
-  var btn = document.getElementById('fbtn-' + mealId);
-  if (G.favSet.has(mealId)) {
-    // remove
-    G.favSet.delete(mealId);
-    if (btn) btn.textContent = '♡';
-    updateNavTabLabel(mealId);
-    try {
-      await sbFetch('/rest/v1/favourites?id=eq.' + encodeURIComponent(G.week.id + '-' + mealId), {
-        method: 'DELETE',
-        headers: {'Prefer': 'return=minimal'}
+  var prev = G.reactionMap[mealId] || null;
+  var next = (prev === reaction) ? null : reaction;
+
+  // optimistic update
+  if (next) G.reactionMap[mealId] = next; else delete G.reactionMap[mealId];
+  G.favSet = new Set(Object.keys(G.reactionMap).filter(function(k) { return G.reactionMap[k] === 'fav'; }));
+  updateRxnWidget(mealId, next);
+  updateNavTabLabel(mealId);
+
+  var id = G.week.id + '-' + mealId;
+  try {
+    if (!next) {
+      await sbFetch('/rest/v1/favourites?id=eq.' + encodeURIComponent(id), {
+        method: 'DELETE', headers: {'Prefer': 'return=minimal'}
       });
-    } catch(e) {
-      G.favSet.add(mealId);
-      if (btn) btn.textContent = '♥';
-      updateNavTabLabel(mealId);
-    }
-  } else {
-    // add
-    G.favSet.add(mealId);
-    if (btn) btn.textContent = '♥';
-    updateNavTabLabel(mealId);
-    try {
+    } else if (!prev) {
       await sbFetch('/rest/v1/favourites', {
-        method: 'POST',
-        headers: {'Prefer': 'return=minimal'},
-        body: JSON.stringify({
-          id: G.week.id + '-' + mealId,
-          meal_id: mealId,
-          week_id: G.week.id,
-          week_title: G.week.title,
-          meal: meal
-        })
+        method: 'POST', headers: {'Prefer': 'return=minimal'},
+        body: JSON.stringify({ id: id, meal_id: mealId, week_id: G.week.id, week_title: G.week.title, meal: meal, reaction: next })
       });
-    } catch(e) {
-      G.favSet.delete(mealId);
-      if (btn) btn.textContent = '♡';
-      updateNavTabLabel(mealId);
+    } else {
+      await sbFetch('/rest/v1/favourites?id=eq.' + encodeURIComponent(id), {
+        method: 'PATCH', headers: {'Prefer': 'return=minimal'},
+        body: JSON.stringify({ reaction: next })
+      });
     }
+  } catch(e) {
+    // rollback
+    if (prev) G.reactionMap[mealId] = prev; else delete G.reactionMap[mealId];
+    G.favSet = new Set(Object.keys(G.reactionMap).filter(function(k) { return G.reactionMap[k] === 'fav'; }));
+    updateRxnWidget(mealId, prev);
+    updateNavTabLabel(mealId);
   }
 }
 
