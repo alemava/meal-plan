@@ -142,10 +142,10 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .rxn.has-sel:has(.rxn-like.sel,.rxn-fav.sel) .rxn-dis{transform-origin:left center}
 @media(hover:hover){
   .rxn:not(.has-sel) .rxn-btn:hover{opacity:1}
-  .rxn.has-sel:hover .rxn-btn:not(.sel){width:32px;margin-right:5px;opacity:.38;transform:scale(1)}
-  .rw:has(.rhero) .rxn.has-sel:hover .rxn-btn:not(.sel){opacity:.72}
-  .rxn.has-sel:hover .rxn-btn:not(.sel):last-child{margin-right:0}
-  .rxn.has-sel:hover .rxn-btn:not(.sel):hover{opacity:.72}
+  .rxn.has-sel:not(.clicking):hover .rxn-btn:not(.sel){width:32px;margin-right:5px;opacity:.38;transform:scale(1)}
+  .rw:has(.rhero) .rxn.has-sel:not(.clicking):hover .rxn-btn:not(.sel){opacity:.72}
+  .rxn.has-sel:not(.clicking):hover .rxn-btn:not(.sel):last-child{margin-right:0}
+  .rxn.has-sel:not(.clicking):hover .rxn-btn:not(.sel):hover{opacity:.72}
 }
 .rtitle{font-size:1.2rem;font-weight:700;line-height:1.3;padding-right:36px;letter-spacing:-0.02em;color:var(--txt)}
 .rmeta-date{font-size:.72rem;color:var(--mut);font-weight:500;margin:3px 0 6px}
@@ -1626,12 +1626,12 @@ function goBackToLib() {
 function updateRxnWidget(mealId, reaction) {
   var w = document.getElementById('rxn-' + mealId);
   if (!w) return;
-  // set sel on buttons first so has-sel never lands without a sel button
   ['like','fav','dis'].forEach(function(r) {
     var btn = w.querySelector('.rxn-' + r);
     if (btn) btn.classList.toggle('sel', (r === 'dis' ? 'dislike' : r) === reaction);
   });
-  w.className = 'rxn' + (reaction ? ' has-sel' : '');
+  w.className = 'rxn' + (reaction ? ' has-sel clicking' : '');
+  if (reaction) setTimeout(function() { w.classList.remove('clicking'); }, 260);
 }
 
 async function setReaction(mealId, reaction) {
