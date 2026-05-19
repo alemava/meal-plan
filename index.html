@@ -1414,6 +1414,7 @@ function showWeekView() {
   document.getElementById('bp').classList.add('on');
   document.getElementById('bl').classList.remove('on');
   document.getElementById('wknav').style.display = '';
+  document.getElementById('wnav').style.display  = '';
   G.view = 'plan';
   // Restore plan state if we were inside a lib recipe view
   if (window._libSavedWeek !== undefined) {
@@ -1440,9 +1441,9 @@ async function showLib() {
   G.libFilter = null;
   G.libQ      = '';
 
-  // clear day nav + hide week carousel
-  document.getElementById('wnav').innerHTML = '';
+  // hide both nav bars completely
   document.getElementById('wknav').style.display = 'none';
+  document.getElementById('wnav').style.display  = 'none';
   loader();
 
   try {
