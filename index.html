@@ -302,7 +302,7 @@ section{margin-bottom:24px}
   <button class="bnb on" id="bp" onclick="showWeekView()">
     <span class="bico">📅</span><span class="bnlbl">Meal plan</span>
   </button>
-  <button class="bnb" id="bl" onclick="showLib('favs')">
+  <button class="bnb" id="bl" onclick="showLib()">
     <span class="bico">📚</span><span class="bnlbl">All recipes</span>
   </button>
 </nav>
@@ -374,7 +374,7 @@ var G = {
   timers: {},
   observers: {},        // IntersectionObservers keyed by timer key
   view: 'plan',
-  libTab: 'favs',
+  libFilter: null,
   libQ: '',
   isPast: false,        // true when the loaded week is a past week
   isLibView: false,     // true when viewing a recipe from the library (read-only)
@@ -1432,12 +1432,12 @@ function showWeekView() {
 }
 
 // ── Library ──────────────────────────────────────────────────────
-async function showLib(tab) {
+async function showLib() {
   document.getElementById('bl').classList.add('on');
   document.getElementById('bp').classList.remove('on');
-  G.view    = 'lib';
-  G.libTab  = tab || 'favs';
-  G.libQ    = '';
+  G.view      = 'lib';
+  G.libFilter = null;
+  G.libQ      = '';
 
   // clear day nav
   document.getElementById('wnav').innerHTML = '';
@@ -1445,60 +1445,50 @@ async function showLib(tab) {
 
   try {
     var results = await Promise.all([
-      sbFetch('/rest/v1/favourites?reaction=eq.fav&select=*&order=created_at.desc'),
       sbFetch('/rest/v1/meal_weeks?select=id,title,meals,week_start&order=week_start.desc'),
       sbFetch('/rest/v1/favourites?select=id,meal_id,week_id,reaction')
     ]);
-    window._libAllWeeks = results[1];
+    window._libAllWeeks  = results[0];
     window._libReactions = {};
-    (results[2] || []).forEach(function(r) { window._libReactions[r.week_id + '-' + r.meal_id] = r.reaction; });
-    renderLib(results[0]);
+    (results[1] || []).forEach(function(r) { window._libReactions[r.week_id + '-' + r.meal_id] = r.reaction; });
+    renderLib();
   } catch(e) {
     setMain('<div class="err-box">Failed to load library:\n' + e.message + '</div>');
   }
 }
 
-function renderLib(favs) {
-  var tab  = G.libTab;
-  var q    = G.libQ.trim().toLowerCase();
+var _DAY_OFF   = {Monday:0,Tuesday:1,Wednesday:2,Thursday:3,Friday:4,Saturday:5,Sunday:6};
+var _MONTHS    = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var _THIS_YEAR = new Date().getFullYear();
+function _mealDate(weekStart, label) {
+  if (!weekStart) return null;
+  var d = new Date(weekStart + 'T12:00:00');
+  d.setDate(d.getDate() + (_DAY_OFF[label] || 0));
+  return d;
+}
+function _mealTs(weekStart, label) {
+  var d = _mealDate(weekStart, label); return d ? d.getTime() : 0;
+}
+function _fmtDate(weekStart, label) {
+  var d = _mealDate(weekStart, label);
+  if (!d) return label || '';
+  var s = d.getDate() + ' ' + _MONTHS[d.getMonth()];
+  if (d.getFullYear() !== _THIS_YEAR) s += ' ' + d.getFullYear();
+  return s;
+}
 
-  var html = '';
+function renderLib() {
+  var q   = G.libQ.trim().toLowerCase();
+  var rxn = window._libReactions || {};
 
-  // search
-  html += '<input class="sinput" type="search" placeholder="Search recipes…" value="' + esc(G.libQ) + '" oninput="libSearch(this.value,window._libFavs)" style="margin-bottom:14px">';
-
-  // tabs
-  html += '<div class="lib-tabs">';
-  var favKeySet = new Set(favs.map(function(f) { return f.week_id + '-' + f.meal_id; }));
-  html += '<button class="ltab' + (tab === 'favs' ? ' on' : '') + '" onclick="libTab(\'favs\',window._libFavs)">❤️ Favourites</button>';
-  html += '<button class="ltab' + (tab === 'all' ? ' on' : '') + '" onclick="libTab(\'all\',window._libFavs)">📖 All Recipes</button>';
-  html += '</div>';
-
-  var items;
-  if (tab === 'favs') {
-    items = favs;
-  } else {
-    // all recipes across all weeks
-    items = [];
-    (window._libAllWeeks || []).forEach(function(week) {
-      (week.meals || []).forEach(function(m) {
-        items.push({
-          id: week.id + '-' + m.id,
-          meal_id: m.id,
-          week_id: week.id,
-          week_title: week.title,
-          meal: m
-        });
-      });
+  // build all items, newest first
+  var items = [];
+  (window._libAllWeeks || []).forEach(function(week) {
+    (week.meals || []).forEach(function(m) {
+      items.push({ id: week.id + '-' + m.id, meal_id: m.id, week_id: week.id, week_start: week.week_start, meal: m });
     });
-    // sort: fav → like → null → dislike
-    var _ro = { fav: 0, like: 1, dislike: 3 };
-    items.sort(function(a, b) {
-      var ra = (window._libReactions || {})[a.week_id + '-' + a.meal_id];
-      var rb = (window._libReactions || {})[b.week_id + '-' + b.meal_id];
-      return (_ro[ra] !== undefined ? _ro[ra] : 2) - (_ro[rb] !== undefined ? _ro[rb] : 2);
-    });
-  }
+  });
+  items.sort(function(a, b) { return _mealTs(b.week_start, b.meal.label) - _mealTs(a.week_start, a.meal.label); });
 
   if (q) {
     items = items.filter(function(f) {
@@ -1506,35 +1496,45 @@ function renderLib(favs) {
           || (f.meal.label || '').toLowerCase().indexOf(q) !== -1;
     });
   }
+  if (G.libFilter) {
+    items = items.filter(function(f) { return rxn[f.week_id + '-' + f.meal_id] === G.libFilter; });
+  }
+
+  var html = '';
+  html += '<input class="sinput" type="search" placeholder="Search recipes…" value="' + esc(G.libQ) + '" oninput="libSearch(this.value)" style="margin-bottom:14px">';
+
+  html += '<div class="lib-tabs">';
+  html += '<button class="ltab' + (!G.libFilter ? ' on' : '') + '" onclick="libFilterSet(null)">All</button>';
+  [{k:'fav',i:'❤️'},{k:'like',i:'👍'},{k:'dislike',i:'👎'}].forEach(function(f) {
+    html += '<button class="ltab' + (G.libFilter === f.k ? ' on' : '') + '" onclick="libFilterSet(\'' + f.k + '\')">' + f.i + '</button>';
+  });
+  html += '</div>';
 
   if (!items.length) {
     html += '<div class="empty">No recipes found.</div>';
   } else {
     items.forEach(function(f) {
-      var m = f.meal;
+      var m      = f.meal;
       var cardId = 'card-' + esc(f.id);
+      var pt     = parseTitle(m.title);
+      var _r     = rxn[f.week_id + '-' + f.meal_id];
+      var _icon  = _r === 'fav' ? '❤️ ' : _r === 'like' ? '👍 ' : _r === 'dislike' ? '👎 ' : '';
+      var day    = _fmtDate(f.week_start, m.label);
+      var type   = (m.meal_type && m.meal_type !== 'special') ? (m.meal_type.charAt(0).toUpperCase() + m.meal_type.slice(1)) : '';
+      var sub    = [];
+      if (day || type) sub.push([day, type].filter(Boolean).join(' · '));
+      if (m.time)      sub.push('⏱ ' + m.time);
+      if (m.kcal)      sub.push('🔥 ' + m.kcal + ' kcal');
+      if (m.people)    sub.push('👥 ' + m.people);
       html += '<div class="card">';
       html += '<div class="card-hdr" onclick="toggleCard(\'' + esc(cardId) + '\')">';
       html += '<div class="card-info">';
-      var pt = parseTitle(m.title);
-      var _rxn = (window._libReactions || {})[f.week_id + '-' + f.meal_id];
-      var _rxnIcon = _rxn === 'fav' ? '❤️ ' : _rxn === 'like' ? '👍 ' : _rxn === 'dislike' ? '👎 ' : '';
-      html += '<div class="card-ttl">' + _rxnIcon + esc(pt.dish || m.title || m.label) + '</div>';
-      var sub = [];
-      if (pt.meta)  sub.push(pt.meta);
-      if (m.time)   sub.push('⏱ ' + m.time);
-      if (m.kcal)   sub.push('🔥 ' + m.kcal + ' kcal');
-      if (m.people) sub.push('👥 ' + m.people);
-      if (f.week_title) sub.push(f.week_title.replace('Meal Plan | ',''));
+      html += '<div class="card-ttl">' + _icon + esc(pt.dish || m.title || m.label) + '</div>';
       html += '<div class="card-sub">' + esc(sub.join(' · ')) + '</div>';
-      html += '</div>';
-      html += '<span class="chev" id="chev-' + esc(cardId) + '">›</span>';
-      html += '</div>';
+      html += '</div><span class="chev" id="chev-' + esc(cardId) + '">›</span></div>';
       html += '<div class="card-body" id="' + esc(cardId) + '">';
-      // ingredient list inside card
       if (m.ingredients && m.ingredients.length) {
-        html += '<div style="padding-top:10px">';
-        html += '<div class="slbl acc">Ingredients</div>';
+        html += '<div style="padding-top:10px"><div class="slbl acc">Ingredients</div>';
         html += '<ul style="list-style:none;padding:0;margin:0">';
         m.ingredients.forEach(function(ing) {
           html += '<li style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--brd);font-size:.87rem;font-weight:500;color:var(--txt)">'
@@ -1550,7 +1550,6 @@ function renderLib(favs) {
     });
   }
 
-  window._libFavs = favs;
   setMain(html);
 }
 
@@ -1562,14 +1561,14 @@ function toggleCard(id) {
   if (chev) chev.classList.toggle('open');
 }
 
-function libTab(tab, favs) {
-  G.libTab = tab;
-  renderLib(favs || window._libFavs || []);
+function libFilterSet(f) {
+  G.libFilter = f;
+  renderLib();
 }
 
-function libSearch(q, favs) {
+function libSearch(q) {
   G.libQ = q;
-  renderLib(favs || window._libFavs || []);
+  renderLib();
   var inp = document.querySelector('.sinput');
   if (inp) { inp.focus(); var l = inp.value.length; inp.setSelectionRange(l, l); }
 }
@@ -1613,7 +1612,7 @@ function goBackToLib() {
     G.shopState   = window._libSavedShopState;
   }
   G.isLibView = false;
-  renderLib(window._libFavs);
+  renderLib();
 }
 
 // ── Reactions ────────────────────────────────────────────────────
