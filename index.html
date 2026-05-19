@@ -1413,6 +1413,7 @@ async function persistShopState() {
 function showWeekView() {
   document.getElementById('bp').classList.add('on');
   document.getElementById('bl').classList.remove('on');
+  document.getElementById('wknav').style.display = '';
   G.view = 'plan';
   // Restore plan state if we were inside a lib recipe view
   if (window._libSavedWeek !== undefined) {
@@ -1439,8 +1440,9 @@ async function showLib() {
   G.libFilter = null;
   G.libQ      = '';
 
-  // clear day nav
+  // clear day nav + hide week carousel
   document.getElementById('wnav').innerHTML = '';
+  document.getElementById('wknav').style.display = 'none';
   loader();
 
   try {
