@@ -133,14 +133,18 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .rxn-btn{width:32px;height:32px;margin-right:5px;border:1.5px solid var(--brd2);border-radius:50%;background:var(--bg);font-size:.95rem;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;overflow:hidden;flex-shrink:0;opacity:.38;transition:width .22s ease,opacity .22s ease,transform .22s ease,margin-right .22s ease}
 .rxn-btn:last-child{margin-right:0}
 .rw:has(.rhero) .rxn-btn{background:rgba(255,255,255,.93);border-color:transparent;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 2px 10px rgba(0,0,0,.3);opacity:.72}
-.rxn.has-sel .rxn-btn:not(.sel){width:0;margin-right:0;opacity:0}
-.rxn.has-sel .rxn-btn.sel{opacity:1;transform:scale(1.1)}
+.rxn.has-sel .rxn-btn:not(.sel){width:0;margin-right:0;opacity:0;transform:scale(0)}
+.rxn.has-sel .rxn-btn.sel{opacity:1;transform:scale(1.1);position:relative;z-index:1}
+/* non-sel shrinks toward the sel button */
+.rxn.has-sel:has(.rxn-fav.sel,.rxn-dis.sel) .rxn-like{transform-origin:right center}
+.rxn.has-sel:has(.rxn-dis.sel) .rxn-fav{transform-origin:right center}
+.rxn.has-sel:has(.rxn-like.sel) .rxn-fav{transform-origin:left center}
+.rxn.has-sel:has(.rxn-like.sel,.rxn-fav.sel) .rxn-dis{transform-origin:left center}
 @media(hover:hover){
   .rxn:not(.has-sel) .rxn-btn:hover{opacity:1}
-  .rxn.has-sel:hover .rxn-btn:not(.sel){width:32px;margin-right:5px;opacity:.38}
+  .rxn.has-sel:hover .rxn-btn:not(.sel){width:32px;margin-right:5px;opacity:.38;transform:scale(1)}
   .rw:has(.rhero) .rxn.has-sel:hover .rxn-btn:not(.sel){opacity:.72}
   .rxn.has-sel:hover .rxn-btn:not(.sel):last-child{margin-right:0}
-  .rxn.has-sel .rxn-btn.sel{opacity:1;transform:scale(1.1)}
   .rxn.has-sel:hover .rxn-btn:not(.sel):hover{opacity:.72}
 }
 .rtitle{font-size:1.2rem;font-weight:700;line-height:1.3;padding-right:36px;letter-spacing:-0.02em;color:var(--txt)}
