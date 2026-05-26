@@ -1521,7 +1521,7 @@ function renderLib() {
       var pt     = parseTitle(m.title);
       var _r     = rxn[f.week_id + '-' + f.meal_id];
       var _icon  = _r === 'fav' ? '❤️ ' : _r === 'like' ? '👍 ' : _r === 'dislike' ? '👎 ' : '';
-      var day    = _fmtDate(f.week_start, m.label);
+      var day    = m.label || '';
       var type   = (m.meal_type && m.meal_type !== 'special') ? (m.meal_type.charAt(0).toUpperCase() + m.meal_type.slice(1)) : '';
       var sub    = [];
       if (day || type) sub.push([day, type].filter(Boolean).join(' · '));
