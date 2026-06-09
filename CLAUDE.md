@@ -1,3 +1,13 @@
+## Ownership & branch rules
+- `main` = production. Never edit directly. Only receives merges from `dev`.
+- `dev` = active development. All changes start here.
+
+## Working directories
+- `/Users/alejandromarquezvazquez/Documents/Dev/Mesa` → main (production, read-only)
+- `/Users/alejandromarquezvazquez/Documents/Dev/Mesa-dev` → dev (always work here)
+
+---
+
 # mesa — project instructions for Claude
 
 ## SW cache version — ALWAYS bump on changes
