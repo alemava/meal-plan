@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="mesa">
 <link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css">
 <title>mesa</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -36,12 +37,16 @@
 html,body{background:var(--bg)}
 body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;background:var(--bg);color:var(--txt);padding-bottom:70px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 
-header{background:var(--bg);border-bottom:1px solid var(--brd);padding:14px 18px 10px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:center;gap:10px}
+header:not(.driver-popover-title){background:var(--bg);border-bottom:1px solid var(--brd);padding:14px 18px 10px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:center;gap:10px}
 .happ{display:block;height:26px;width:auto}
 .htagline{font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--hnt);border-left:1.5px solid var(--brd2);padding-left:10px;line-height:1}
 .hcook-lbl{display:none;align-items:center;gap:5px;font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--acc);border-left:1.5px solid var(--brd2);padding-left:10px;line-height:1}
 .cook-exit{display:none;margin-left:auto;border:1px solid var(--acb);background:var(--acl);color:var(--acc);font-size:.72rem;font-weight:700;border-radius:8px;padding:5px 12px;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;white-space:nowrap;transition:background .15s}
 .cook-exit:hover{background:var(--acb)}
+.mh-help{position:absolute;right:18px;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--hnt);padding:4px;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;display:flex;align-items:center;border-radius:8px;transition:color .15s,background .15s}
+.mh-help:hover{color:var(--acc);background:var(--acl)}
+.mh-help svg{width:20px;height:20px}
+body.cooking-mode .mh-help{display:none!important}
 .cook-btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;border:none;background:var(--acc);color:#1a1a1a;font-weight:700;font-size:.9rem;border-radius:12px;padding:13px 16px;cursor:pointer;margin:14px 0 2px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:opacity .15s}
 .cook-btn:active{opacity:.8}
 .cook-btn svg{width:18px;height:18px;flex-shrink:0}
@@ -64,14 +69,32 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .mark-all-btn:hover{background:var(--acl)}
 
 .wnav{display:flex;background:var(--bg);border-bottom:1px solid var(--brd);overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:10px 14px;gap:6px;align-items:center}
+.wnav.fits{justify-content:center}
 .wnav::-webkit-scrollbar{display:none}
 .wnb{padding:8px 15px;border:1px solid var(--brd2);background:var(--wht);font-size:.78rem;font-weight:600;color:var(--mut);cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;border-radius:999px;transition:all .15s ease;letter-spacing:-0.01em}
 .wnb:hover{border-color:var(--hnt);color:var(--txt)}
 .wnb.on{background:var(--txt);color:var(--bg);border-color:var(--txt)}
 .wnb.shop-tab{background:var(--wht);color:var(--grn);border-color:var(--gnc)}
 .wnb.shop-tab.on{background:var(--grn);color:#fff;border-color:var(--grn)}
+.shop-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--acc);color:#fff;font-size:.62rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;margin-left:4px}
+.wnb.shop-tab.on .shop-count{background:#fff;color:var(--grn)}
 .wnb.special-tab{background:var(--wht);color:#8a5a1e;border-color:#e8d9bf}
 .wnb.special-tab.on{background:#8a5a1e;color:#fff;border-color:#8a5a1e}
+.day-count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--acc);color:#fff;font-size:.6rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;margin-left:4px}
+.wnb.on .day-count{background:var(--bg);color:var(--txt)}
+
+/* Day overview */
+.day-h{font-size:1.3rem;font-weight:700;letter-spacing:-0.01em;color:var(--txt);margin-bottom:2px}
+.day-h-today{color:var(--acc)}
+.day-sub{font-size:.82rem;color:var(--mut);margin-bottom:14px}
+.meal-card{display:flex;gap:12px;align-items:stretch;background:var(--wht);border:1px solid var(--brd);border-radius:14px;padding:12px;margin-bottom:10px;box-shadow:var(--shd);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:box-shadow .15s}
+.meal-card:hover{box-shadow:var(--shd2)}
+.meal-card-img{width:80px;height:80px;border-radius:10px;flex-shrink:0;object-fit:cover;background:var(--srf)}
+.meal-card-ph{width:80px;height:80px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.6rem}
+.meal-card-body{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.meal-card-type{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.meal-card-ttl{font-size:.92rem;font-weight:600;color:var(--txt);line-height:1.3}
+.meal-card-meta{font-size:.76rem;color:var(--mut)}
 
 .bnav{position:fixed;bottom:0;left:0;right:0;background:var(--wht);border-top:1px solid var(--brd);display:flex;z-index:100;height:62px;padding:6px 10px 8px}
 .bnb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent;color:var(--hnt);border-radius:12px;margin:0 3px;transition:background .15s}
@@ -136,6 +159,9 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .rxn.has-sel .rxn-btn:not(.sel){width:0;margin-right:0;opacity:0;transform:scale(0);transform-origin:right center}
 .rxn.has-sel .rxn-btn.sel{opacity:1;transform:scale(1.1);position:relative;z-index:1;order:1;margin-right:0}
 .rxn.has-sel.just-clicked .rxn-btn:not(.sel){width:32px;margin-right:5px;opacity:0;transform:scale(1);pointer-events:none}
+/* Tour: show all reaction icons at full opacity while this widget is highlighted */
+.rxn.driver-active-element .rxn-btn{opacity:1!important;width:32px!important;transform:none!important}
+.rxn.driver-active-element .rxn-btn:not(:last-child){margin-right:5px!important}
 @media(hover:hover){
   .rxn:not(.has-sel) .rxn-btn:hover{opacity:1}
   .rxn.has-sel:not(.clicking):hover .rxn-btn:not(.sel){width:32px;margin-right:5px;opacity:.38;transform:scale(1)}
@@ -262,6 +288,38 @@ section{margin-bottom:24px}
   .stk-inner{padding:4px 16px}
   .wnav::before,.wnav::after{content:'';flex:1 1 0}
 }
+
+/* ── Welcome / tour-intro modal ──────────────────────────────────── */
+.tw-backdrop{display:none;position:fixed;inset:0;background:rgba(26,22,18,0.45);z-index:200;align-items:center;justify-content:center;padding:20px}
+.tw-backdrop.open{display:flex}
+.tw-card{position:relative;background:var(--wht);border-radius:18px;box-shadow:var(--shd2);padding:28px 24px;max-width:340px;width:100%;text-align:center}
+.tw-close{position:absolute;top:10px;right:10px;border:none;background:none;color:var(--hnt);font-size:1rem;cursor:pointer;padding:8px;line-height:1;border-radius:8px;-webkit-tap-highlight-color:transparent}
+.tw-close:hover{color:var(--txt);background:var(--srf)}
+.tw-icon{display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;background:var(--acl);color:var(--acc);margin:0 auto 14px}
+.tw-icon svg{width:24px;height:24px}
+.tw-ttl{font-size:1.1rem;font-weight:700;color:var(--txt);margin-bottom:8px;letter-spacing:-0.01em}
+.tw-body{font-size:.85rem;color:var(--mut);line-height:1.5;margin-bottom:20px}
+.tw-actions{display:flex;flex-direction:column;gap:8px}
+.tw-btn{border-radius:10px;padding:12px 16px;font-size:.85rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;border:none;transition:opacity .15s}
+.tw-primary{background:var(--acc);color:#fff}
+.tw-primary:hover{background:var(--acd)}
+.tw-secondary{background:none;color:var(--mut);border:1px solid var(--brd2)}
+.tw-secondary:hover{background:var(--srf)}
+
+/* ── Driver.js theme override ────────────────────────────────────── */
+.driver-popover{background:var(--wht);color:var(--txt);border-radius:14px;box-shadow:var(--shd2);padding:16px;max-width:300px}
+.driver-popover-title{font-size:.95rem;font-weight:700;color:var(--txt);letter-spacing:-0.01em}
+.driver-popover-description{font-size:.82rem;color:var(--mut);line-height:1.5;margin-top:6px}
+.driver-popover-progress-text{font-size:.72rem;color:var(--hnt)}
+.driver-popover-footer{margin-top:14px}
+.driver-popover-footer button{border-radius:8px;padding:7px 14px;font-size:.78rem;font-weight:700;border:1px solid var(--brd2);background:var(--wht);color:var(--txt);text-shadow:none;cursor:pointer}
+.driver-popover-footer .driver-popover-next-btn{background:var(--acc);color:#fff;border-color:var(--acc)}
+.driver-popover-footer .driver-popover-next-btn:hover{background:var(--acd)}
+.driver-popover-footer .driver-popover-prev-btn:hover,.driver-popover-footer .driver-popover-close-btn:hover{background:var(--srf)}
+.driver-popover-arrow-side-top.driver-popover-arrow{border-top-color:var(--wht)}
+.driver-popover-arrow-side-bottom.driver-popover-arrow{border-bottom-color:var(--wht)}
+.driver-popover-arrow-side-left.driver-popover-arrow{border-left-color:var(--wht)}
+.driver-popover-arrow-side-right.driver-popover-arrow{border-right-color:var(--wht)}
 </style>
 </head>
 <body>
@@ -269,9 +327,12 @@ section{margin-bottom:24px}
   <img src="logo.svg" class="happ" alt="mesa">
   <span class="htagline">Meal Plan</span>
   <span class="hcook-lbl">🍳 Cooking</span>
-  <button class="cook-exit" onclick="exitCookingMode()">✕ Stop</button>
+  <button class="cook-exit" data-tour="stop-cooking" onclick="exitCookingMode()">✕ Stop</button>
+  <button class="mh-help" data-tour="help-icon" onclick="showWelcome()" title="Help &amp; tour" aria-label="Help and tour">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 4"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+  </button>
 </header>
-<nav class="wknav" id="wknav"></nav>
+<nav class="wknav" id="wknav" data-tour="week-tabs"></nav>
 <div id="offline-bar">No connection — showing cached data</div>
 <div id="update-banner">
   <div class="ub-inner">
@@ -292,20 +353,36 @@ section{margin-bottom:24px}
     <button class="ib-close" onclick="dismissInstallBanner()" title="Dismiss" aria-label="Dismiss">✕</button>
   </div>
 </div>
-<nav class="wnav" id="wnav"></nav>
+<nav class="wnav" id="wnav" data-tour="day-tabs"></nav>
 <main class="content" id="main">
   <div class="loader"><div class="spin"></div><span>Loading…</span></div>
 </main>
-<div id="sticky-bar"><div class="stk-inner" id="stk-inner"></div></div>
+<div id="sticky-bar" data-tour="floating-timers"><div class="stk-inner" id="stk-inner"></div></div>
 <nav class="bnav" id="bnav">
   <button class="bnb on" id="bp" onclick="showWeekView()">
     <span class="bico">📅</span><span class="bnlbl">Meal plan</span>
   </button>
-  <button class="bnb" id="bl" onclick="showLib()">
+  <button class="bnb" id="bl" data-tour="all-recipes-nav" onclick="showLib()">
     <span class="bico">📚</span><span class="bnlbl">All recipes</span>
   </button>
 </nav>
 
+<div id="tour-welcome" class="tw-backdrop">
+  <div class="tw-card">
+    <button class="tw-close" onclick="closeWelcome()" aria-label="Close">✕</button>
+    <div class="tw-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 4"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+    </div>
+    <div class="tw-ttl">Welcome to mesa</div>
+    <div class="tw-body">Your weekly meal plan, shopping list and recipes — all in one place. Want a quick tour of what's here?</div>
+    <div class="tw-actions">
+      <button class="tw-btn tw-primary" onclick="closeWelcome(); localStorage.setItem('mesa-tour-seen','1'); startTour();">Show me around</button>
+      <button class="tw-btn tw-secondary" onclick="closeWelcome(); localStorage.setItem('mesa-tour-seen','1');">Skip tutorial</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <script>
 // ── Install banner device icons ──────────────────────────────────
 var ICO_PHONE   = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><line x1="10.5" y1="18.5" x2="13.5" y2="18.5"/></svg>';
@@ -367,6 +444,8 @@ var G = {
   weeks: [],
   week: null,
   day: null,
+  dayLabel: null,       // weekday shown in the day-pill strip (e.g. 'Tuesday')
+  planSubView: 'overview', // 'overview' | 'recipe' — which screen the plan tab shows
   shopState: {},
   favSet: new Set(),
   reactionMap: {},      // meal_id → 'fav'|'like'|'dislike' for current week
@@ -397,6 +476,10 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', syncViewport);
   window.visualViewport.addEventListener('scroll', syncViewport);
 }
+window.addEventListener('resize', function() {
+  var nav = document.getElementById('wnav');
+  if (nav) nav.classList.toggle('fits', nav.scrollWidth <= nav.clientWidth + 1);
+});
 
 // ── Utilities ────────────────────────────────────────────────────
 function ingKey(name) {
@@ -418,6 +501,14 @@ function thisWeekMonday() {
   var mm  = mon.getMonth() + 1;
   var dd  = mon.getDate();
   return mon.getFullYear() + '-' + (mm < 10 ? '0' : '') + mm + '-' + (dd < 10 ? '0' : '') + dd;
+}
+
+// "YYYY-MM-DD" + N days -> "YYYY-MM-DD" (used to build placeholder week-tab labels for the tour)
+function _addDaysToDateStr(dateStr, days) {
+  var d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  var mm = d.getMonth() + 1, dd = d.getDate();
+  return d.getFullYear() + '-' + (mm < 10 ? '0' : '') + mm + '-' + (dd < 10 ? '0' : '') + dd;
 }
 
 // Classify a week as 'current' | 'past' | 'future' purely from week_start
@@ -446,9 +537,8 @@ function fmtWeekRange(weekStart) {
   if (!weekStart) return '?';
   var mon = new Date(weekStart + 'T12:00:00');
   var fri = new Date(mon); fri.setDate(fri.getDate() + 4);
-  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   var monStr = mon.getDate();
-  var friStr = fri.getDate() + ' ' + months[fri.getMonth()];
+  var friStr = fri.getDate() + ' ' + _MONTHS_FULL[fri.getMonth()];
   // span two months? show both; span two years? show year on fri
   if (mon.getFullYear() !== fri.getFullYear()) {
     friStr += ' ' + fri.getFullYear();
@@ -551,6 +641,14 @@ function triggerInstall() {
 // ── Init ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', init);
 
+// First-visit welcome modal — independent of the async data load above,
+// so it appears even if the meal-plan fetch is slow.
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(function() {
+    if (!localStorage.getItem('mesa-tour-seen')) showWelcome();
+  }, 400);
+});
+
 async function init() {
   initInstallBanner();
   try {
@@ -575,6 +673,289 @@ async function init() {
   } catch(e) {
     setMain('<div class="err-box">Failed to load weeks:\n' + e.message + '</div>');
   }
+}
+
+// ── Onboarding tour ──────────────────────────────────────────────
+function showWelcome() {
+  var modal = document.getElementById('tour-welcome');
+  if (modal) modal.classList.add('open');
+}
+
+function closeWelcome() {
+  var modal = document.getElementById('tour-welcome');
+  if (modal) modal.classList.remove('open');
+}
+
+var _tourHelpOnclick;
+
+function startTour() {
+  if (!window.driver || !window.driver.js) return; // CDN failed to load — fail quietly
+
+  var steps = [];
+  var tourTimerKey = null;
+  var tourDriver;
+  var wknavSnapshot = null;   // {html, display} if placeholder week tabs were injected
+  var realIsPast    = G.isPast;
+  var isPastToggled = false;  // true if G.isPast was temporarily forced to false
+  var syntheticStep = null;   // {meal, idx} if a demo timer step was injected
+  var timerResynced = false;  // true once the floating-timer step's one-shot resync has run
+
+  // Re-resolve driver.js's highlighted element by re-querying the step's selector —
+  // needed after onHighlightStarted mutates the DOM, since .refresh() only
+  // re-measures whatever element was captured *before* onHighlightStarted ran.
+  function resyncHighlight(idx) {
+    setTimeout(function() {
+      if (tourDriver && tourDriver.getActiveIndex() === idx) tourDriver.moveTo(idx);
+    }, 120);
+  }
+
+  var cookMeals  = (G.week.meals || []).filter(function(m) { return m.meal_type !== 'special'; });
+  var todayMeals = cookMeals.filter(function(m) { return m.label === G.dayLabel; });
+
+  steps.push({
+    element: '[data-tour="week-tabs"]',
+    popover: {
+      title: 'Jump between weeks',
+      description: "Tap to see last week, this week, or what's coming up next.",
+      side: 'bottom', align: 'start'
+    },
+    onHighlightStarted: function() {
+      var wknav = document.getElementById('wknav');
+      // renderWeekCarousel hides #wknav (no tabs rendered) when there's only one week to show
+      if (wknav && wknav.children.length < 2) {
+        wknavSnapshot = { html: wknav.innerHTML, display: wknav.style.display };
+        var thisMon = thisWeekMonday();
+        var prevLbl = fmtWeekRange(_addDaysToDateStr(thisMon, -7));
+        var curLbl  = fmtWeekRange(thisMon);
+        var nextLbl = fmtWeekRange(_addDaysToDateStr(thisMon, 7));
+        wknav.innerHTML = '<button class="wktab">' + prevLbl + '</button>'
+          + '<button class="wktab on">' + curLbl + '</button>'
+          + '<button class="wktab">' + nextLbl + '</button>';
+        wknav.style.display = 'flex';
+        setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 60);
+      }
+    }
+  });
+
+  steps.push({
+    element: '[data-tour="day-tabs"]',
+    popover: {
+      title: 'Pick a day',
+      description: 'Each day shows the meals planned for it — tap to see the recipe.',
+      side: 'bottom', align: 'start'
+    }
+  });
+
+  steps.push({
+    element: '[data-tour="shopping-tab"]',
+    popover: {
+      title: 'Shopping list',
+      description: "Counts what's left to buy for the week.",
+      side: 'bottom', align: 'start'
+    },
+    onHighlightStarted: function() {
+      if (!document.getElementById('wnb-shop')) {
+        isPastToggled = true;
+        G.isPast = false;
+        renderDayNav(G.week);
+        if (G.planSubView === 'recipe' && G.day) showDay(G.day);
+        else showDayOverview(G.dayLabel);
+        resyncHighlight(tourDriver.getActiveIndex());
+      }
+      var wnav = document.getElementById('wnav');
+      if (wnav) wnav.scrollTo({ left: 0, behavior: 'smooth' });
+    }
+  });
+
+  if (cookMeals.length) {
+    steps.push({
+      element: '.rxn',
+      popover: {
+        title: 'Rate as you go',
+        description: 'Tap 👍 to like, ❤️ to favourite, or 👎 to dislike any recipe — your picks help shape future weeks.',
+        side: 'left', align: 'start'
+      },
+      onHighlightStarted: function() {
+        if (!document.querySelector('.rxn')) {
+          var meals = todayMeals.length ? todayMeals : cookMeals;
+          showDay(meals[0].id);
+          resyncHighlight(tourDriver.getActiveIndex());
+        }
+      }
+    });
+  }
+
+  if ('wakeLock' in navigator) {
+    if (cookMeals.length) {
+      steps.push({
+        element: '[data-tour="start-cooking"]',
+        popover: {
+          title: 'Hands-free cook mode',
+          description: 'Hides everything but the recipe and keeps the screen awake while you cook.',
+          side: 'top', align: 'start'
+        },
+        onHighlightStarted: function() {
+          if (G.cookingMode) exitCookingMode();
+          var btn = document.querySelector('[data-tour="start-cooking"]');
+          if (!btn) {
+            var meals = todayMeals.length ? todayMeals : cookMeals;
+            showDay(meals[0].id);
+            resyncHighlight(tourDriver.getActiveIndex());
+          } else {
+            btn.scrollIntoView({behavior:'instant', block:'center'});
+            setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 60);
+          }
+        }
+      });
+
+      steps.push({
+        element: '[data-tour="floating-timer"]',
+        popover: {
+          title: 'Timers stay with you',
+          description: "Once a timer is running, it floats here as you scroll — and beeps when it's done.",
+          side: 'bottom', align: 'start'
+        },
+        onHighlightStarted: function() {
+          if (!G.cookingMode) enterCookingMode();
+          var meal = (G.week.meals || []).find(function(m) { return m.id === G.day; });
+          if (meal) {
+            if (meal.steps) {
+              meal.steps.some(function(step, si) {
+                if (!step.timers) return false;
+                return step.timers.some(function(t, ti) {
+                  var key = meal.id + '-' + si + '-' + ti;
+                  if (!G.timers[key]) return false;
+                  tourTimerKey = key;
+                  if (!G.timers[key].running && G.timers[key].remaining === G.timers[key].secs) {
+                    timerAction(key);
+                  }
+                  var trow = document.getElementById('trow-' + key);
+                  if (trow) {
+                    trow.setAttribute('data-tour', 'floating-timer');
+                    if (trow.style.position !== 'fixed') floatTrow(key, false);
+                  }
+                  return true;
+                });
+              });
+            }
+            // No real timer found anywhere in this recipe — add a short demo timer
+            if (!tourTimerKey) {
+              meal.steps = meal.steps || [];
+              var fakeIdx = meal.steps.length;
+              meal.steps.push({
+                title: 'Tour demo',
+                text: 'A short demo timer so you can see how this works.',
+                timers: [{ label: 'Demo timer', seconds: 60 }]
+              });
+              syntheticStep = { meal: meal, idx: fakeIdx };
+              showDay(meal.id);
+              var key = meal.id + '-' + fakeIdx + '-0';
+              tourTimerKey = key;
+              timerAction(key);
+              var trow = document.getElementById('trow-' + key);
+              if (trow) {
+                trow.setAttribute('data-tour', 'floating-timer');
+                floatTrow(key, false);
+              }
+            }
+          }
+          if (!timerResynced) {
+            timerResynced = true;
+            resyncHighlight(tourDriver.getActiveIndex());
+          }
+        }
+      });
+
+      steps.push({
+        element: '[data-tour="stop-cooking"]',
+        popover: {
+          title: 'Exit cook mode here',
+          description: 'Tap ✕ Stop to leave cook mode, release the screen lock, and return to the recipe.',
+          side: 'bottom', align: 'start'
+        },
+        onHighlightStarted: function() {
+          if (!G.cookingMode) enterCookingMode();
+        }
+      });
+    }
+  }
+
+  steps.push({
+    element: '[data-tour="all-recipes-nav"]',
+    popover: {
+      title: 'Your recipe library',
+      description: "Browse favourites or every recipe you've ever planned — search included.",
+      side: 'top', align: 'start'
+    },
+    onHighlightStarted: function() {
+      if (G.cookingMode) exitCookingMode();
+    }
+  });
+
+  steps.push({
+    element: '[data-tour="help-icon"]',
+    popover: {
+      title: 'Replay anytime',
+      description: 'Tap this icon in the header to run this tour again — no penalty for forgetting where things live.',
+      side: 'bottom', align: 'end'
+    },
+    onHighlightStarted: function() {
+      if (G.cookingMode) exitCookingMode();
+      var help = document.querySelector('.mh-help');
+      if (help) {
+        _tourHelpOnclick = help.onclick;
+        help.onclick = null;
+      }
+    }
+  });
+
+  tourDriver = window.driver.js.driver({
+    showProgress: true,
+    onDestroyed: function() {
+      var help = document.querySelector('.mh-help');
+      if (help && _tourHelpOnclick !== undefined) {
+        help.onclick = _tourHelpOnclick;
+        _tourHelpOnclick = undefined;
+      }
+      if (G.cookingMode) exitCookingMode();
+      if (tourTimerKey && G.timers[tourTimerKey]) {
+        var t = G.timers[tourTimerKey];
+        stopTimer(tourTimerKey);
+        t.remaining = t.secs;
+        t.alerted   = false;
+        updateTimerDisplay(tourTimerKey);
+        updateTimerButtons(tourTimerKey);
+        disconnectTimerObserver(tourTimerKey);
+        if (document.getElementById('trow-' + tourTimerKey)) unfloatTrow(tourTimerKey);
+      }
+
+      // Remove the synthetic demo timer step added when no real timer existed
+      if (syntheticStep) {
+        syntheticStep.meal.steps.splice(syntheticStep.idx, 1);
+        delete G.timers[tourTimerKey];
+      }
+
+      // Restore G.isPast and re-render whatever it affected
+      if (isPastToggled) G.isPast = realIsPast;
+      if (isPastToggled || syntheticStep) {
+        renderDayNav(G.week);
+        if (G.planSubView === 'recipe' && G.day) showDay(G.day);
+        else showDayOverview(G.dayLabel);
+      }
+
+      // Restore the real week-tab carousel if placeholders were injected
+      if (wknavSnapshot) {
+        var wknav = document.getElementById('wknav');
+        if (wknav) {
+          wknav.innerHTML = wknavSnapshot.html;
+          wknav.style.display = wknavSnapshot.display;
+        }
+      }
+    }
+  });
+
+  tourDriver.setSteps(steps);
+  tourDriver.drive();
 }
 
 function renderWeekCarousel(shown, thisMonday) {
@@ -627,8 +1008,7 @@ async function loadWeek(id) {
     // render day nav (shopping tab only for current/future weeks)
     renderDayNav(G.week);
     if (G.week.meals && G.week.meals.length) {
-      var autoDay = todayMealId(G.week.meals) || G.week.meals[0].id;
-      showDay(autoDay);
+      goToDayOrFirstSpecial(todayDayLabel());
     } else {
       setMain('<div class="empty">No meals this week.</div>');
     }
@@ -654,52 +1034,62 @@ function mealTabLabel(m) {
   return prefix + esc(m.label) + suffix;
 }
 
+// Shared day ordering used by both nav rendering and overview lookups
+var DAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
 function renderDayNav(week) {
   var nav   = document.getElementById('wnav');
   var meals = week.meals || [];
-  // Shopping tab first, then regular meals sorted by day, then specials at the end
-  var DAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-  var MEAL_ORDER = ['breakfast','lunch','dinner'];
   var regular  = meals.filter(function(m) { return m.meal_type !== 'special'; });
   var specials = meals.filter(function(m) { return m.meal_type === 'special'; });
-  regular.sort(function(a, b) {
-    var da = DAY_ORDER.indexOf(a.label), db = DAY_ORDER.indexOf(b.label);
-    if (da === -1) da = 99; if (db === -1) db = 99;
-    if (da !== db) return da - db;
-    var ma = MEAL_ORDER.indexOf(a.meal_type), mb = MEAL_ORDER.indexOf(b.meal_type);
-    if (ma === -1) ma = 99; if (mb === -1) mb = 99;
-    return ma - mb;
+
+  var html = '';
+  if (!G.isPast) {
+    var tobuyCount = buildShopBuckets(meals, G.shopState).tobuy.length;
+    html += '<button class="wnb shop-tab" id="wnb-shop" data-tour="shopping-tab" onclick="showShop()">🛒 Shopping<span class="shop-count">' + tobuyCount + '</span></button>';
+  }
+
+  // One pill per day that has at least one regular (non-special) meal
+  DAY_ORDER.forEach(function(dayLabel) {
+    var dayMeals = regular.filter(function(m) { return m.label === dayLabel; });
+    if (!dayMeals.length) return;
+    var countBadge = dayMeals.length > 1 ? '<span class="day-count">' + dayMeals.length + '</span>' : '';
+    html += '<button class="wnb" id="wnb-day-' + esc(dayLabel) + '" onclick="showDayOverview(\'' + esc(dayLabel) + '\')">'
+      + _SHORT_DAY[dayLabel] + countBadge + '</button>';
   });
-  var ordered  = regular.concat(specials);
-  var html = G.isPast ? '' : '<button class="wnb shop-tab" id="wnb-shop" onclick="showShop()">🛒 Shopping</button>';
-  html += ordered.map(function(m) {
-    var extra = m.meal_type === 'special' ? ' special-tab' : '';
-    return '<button class="wnb' + extra + '" id="wnb-' + esc(m.id) + '" onclick="showDay(\'' + esc(m.id) + '\')">'
+
+  // Specials stay as individual pills, each opening its recipe directly
+  html += specials.map(function(m) {
+    return '<button class="wnb special-tab" id="wnb-' + esc(m.id) + '" onclick="showDay(\'' + esc(m.id) + '\')">'
       + mealTabLabel(m) + '</button>';
   }).join('');
+
   nav.innerHTML = html;
+  nav.classList.toggle('fits', nav.scrollWidth <= nav.clientWidth + 1);
 }
 
-function todayMealId(meals) {
+// Pick the day-overview label to land on when a week first loads:
+// today's weekday if it has meals, else the first day (in week order) that has meals.
+// Returns null if the week has no regular (non-special) meals at all.
+function todayDayLabel() {
+  var meals = (G.week && G.week.meals) || [];
   var dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  var today    = dayNames[new Date().getDay()];
-  // specials are never auto-selected on load
-  var matches  = meals.filter(function(m) { return m.label === today && m.meal_type !== 'special'; });
-  if (!matches.length) return null;
-  if (matches.length === 1) return matches[0].id;
-  // Multiple meals today — pick by time of day
-  // breakfast: before 12:00 · lunch: 12:00–17:59 · dinner: 18:00+
-  var hour = new Date().getHours();
-  var preferred = hour < 12 ? 'breakfast' : hour < 18 ? 'lunch' : 'dinner';
-  var pick = matches.find(function(m) { return m.meal_type === preferred; });
-  if (pick) return pick.id;
-  // fallback: closest meal in time order (breakfast < lunch < dinner)
-  var order = ['breakfast', 'lunch', 'dinner'];
-  var sorted = matches.slice().sort(function(a, b) {
-    return order.indexOf(a.meal_type) - order.indexOf(b.meal_type);
+  var today = dayNames[new Date().getDay()];
+  if (meals.some(function(m) { return m.label === today && m.meal_type !== 'special'; })) return today;
+  var found = null;
+  DAY_ORDER.some(function(d) {
+    if (meals.some(function(m) { return m.label === d && m.meal_type !== 'special'; })) { found = d; return true; }
+    return false;
   });
-  // past the last meal of the day → show the last one
-  return sorted[sorted.length - 1].id;
+  return found;
+}
+
+// Land on a day overview, or — if the week has only specials — open the first special directly
+function goToDayOrFirstSpecial(dayLabel) {
+  if (dayLabel) { showDayOverview(dayLabel); return; }
+  var firstSpecial = (G.week.meals || []).find(function(m) { return m.meal_type === 'special'; });
+  if (firstSpecial) showDay(firstSpecial.id);
+  else setMain('<div class="empty">No meals this week.</div>');
 }
 
 function setNavActive(id) {
@@ -715,14 +1105,79 @@ function setNavActive(id) {
   }
 }
 
+// ── Day overview ─────────────────────────────────────────────────
+function showDayOverview(dayLabel) {
+  G.dayLabel = dayLabel;
+  G.day = null;
+  G.planSubView = 'overview';
+  // Clean up any floating timers from previous meal view
+  Object.keys(G.observers).forEach(disconnectTimerObserver);
+  setNavActive('day-' + dayLabel);
+  renderDayOverview(dayLabel);
+}
+
+var MEAL_TYPE_LABEL = {breakfast:'Breakfast', lunch:'Lunch', dinner:'Dinner'};
+var MEAL_TYPE_BG    = {breakfast:'var(--acl)', lunch:'var(--srf)', dinner:'var(--gnb)'};
+var MEAL_TYPE_ICO   = {breakfast:'🌅', lunch:'🥗', dinner:'🍽'};
+var MEAL_ORDER = ['breakfast','lunch','dinner'];
+
+function renderDayOverview(dayLabel) {
+  var meals = (G.week.meals || []).filter(function(m) { return m.label === dayLabel && m.meal_type !== 'special'; });
+  meals.sort(function(a, b) {
+    var ma = MEAL_ORDER.indexOf(a.meal_type), mb = MEAL_ORDER.indexOf(b.meal_type);
+    if (ma === -1) ma = 99; if (mb === -1) mb = 99;
+    return ma - mb;
+  });
+
+  var dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var isToday = !G.isPast
+    && weekRelative(G.week.week_start, thisWeekMonday()) === 'current'
+    && dayNames[new Date().getDay()] === dayLabel;
+
+  var dateStr = esc(_fmtDateFull(G.week.week_start, dayLabel));
+  var heading = isToday ? '<span class="day-h-today">Today · </span>' + dateStr : dateStr;
+
+  var html = '<div class="day-h">' + heading + '</div>';
+  html += '<div class="day-sub">' + meals.length + ' meal' + (meals.length === 1 ? '' : 's') + ' planned</div>';
+
+  meals.forEach(function(meal) {
+    var pt = parseTitle(meal.title);
+    var img = meal.image_url
+      ? '<img class="meal-card-img" src="' + esc(meal.image_url) + '" alt="" loading="lazy">'
+      : '<div class="meal-card-ph" style="background:' + (MEAL_TYPE_BG[meal.meal_type] || 'var(--srf)') + '">' + (MEAL_TYPE_ICO[meal.meal_type] || '🍽') + '</div>';
+    var meta = [];
+    if (meal.time) meta.push('⏱ ' + esc(meal.time));
+    if (meal.kcal) meta.push('🔥 ' + esc(meal.kcal) + ' kcal');
+    if (meal.people) meta.push('👥 ' + esc(meal.people));
+    html += '<div class="meal-card" onclick="showDay(\'' + esc(meal.id) + '\')">'
+      + img
+      + '<div class="meal-card-body">'
+      + '<div class="meal-card-type">' + (MEAL_TYPE_LABEL[meal.meal_type] || '') + '</div>'
+      + '<div class="meal-card-ttl">' + esc(pt.dish || meal.title) + '</div>'
+      + (meta.length ? '<div class="meal-card-meta">' + meta.join(' · ') + '</div>' : '')
+      + '</div></div>';
+  });
+
+  if (!meals.length) html += '<div class="empty">No meals planned.</div>';
+
+  setMain(html);
+}
+
 // ── Recipe view ──────────────────────────────────────────────────
 function showDay(dayId) {
   G.day = dayId;
-  setNavActive(dayId);
   // Clean up any floating timers from previous meal view
   Object.keys(G.observers).forEach(disconnectTimerObserver);
   var meal = (G.week.meals || []).find(function(m) { return m.id === dayId; });
   if (!meal) { setMain('<div class="empty">Meal not found.</div>'); return; }
+  G.planSubView = 'recipe';
+  if (meal.meal_type === 'special') {
+    G.dayLabel = null;
+    setNavActive(meal.id);
+  } else {
+    G.dayLabel = meal.label;
+    setNavActive('day-' + meal.label);
+  }
   setMain('<div class="rw">' + renderRecipe(meal) + '</div>');
   bindTimers(meal);
 }
@@ -761,7 +1216,7 @@ function renderRecipe(meal) {
 
   // Start cooking CTA — only on devices that support the Wake Lock API
   if ('wakeLock' in navigator) {
-    html += '<button class="cook-btn" onclick="enterCookingMode()">'
+    html += '<button class="cook-btn" data-tour="start-cooking" onclick="enterCookingMode()">'
           + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16 10,8" fill="currentColor" stroke="none"/></svg>'
           + 'Start cooking</button>';
   }
@@ -846,6 +1301,7 @@ function renderRecipe(meal) {
           stepsHtml += '<div class="tlbl"><b>' + esc(t.label) + '</b><span class="tlbl-total"><br>' + fmtTime(t.seconds) + '</span></div>';
           stepsHtml += '<div class="tdisp" id="tdisp-' + esc(key) + '">' + fmtTime(t.seconds) + '</div>';
           stepsHtml += '<button class="tbtn trst" id="trst-' + esc(key) + '" onclick="stickyRestart(\'' + esc(key) + '\')" style="display:none" title="Restart">' + ICO_RST + '</button>';
+          stepsHtml += '<button class="tbtn trst" id="tcls-' + esc(key) + '" onclick="timerReset(\'' + esc(key) + '\')" style="display:none" title="Close">' + ICO_CLOSE + '</button>';
           stepsHtml += '<button class="tbtn" id="tbtn-' + esc(key) + '" onclick="timerAction(\'' + esc(key) + '\')" title="Start">' + ICO_PLAY + '</button>';
           stepsHtml += '</div>';
           if (t.alertMsg) stepsHtml += '<div class="alertmsg" id="talert-' + esc(key) + '" style="display:none">' + esc(t.alertMsg) + '</div>';
@@ -877,23 +1333,28 @@ function updateTimerButtons(key) {
   var t    = G.timers[key];
   var btn  = document.getElementById('tbtn-' + key);
   var rst  = document.getElementById('trst-' + key);
+  var cls  = document.getElementById('tcls-' + key);
   var trow = document.getElementById('trow-' + key);
   if (!t || !btn) return;
   if (t.remaining === 0) {
     btn.innerHTML = ICO_CLOSE; btn.className = 'tbtn trst'; btn.title = 'Close';
     if (rst) rst.style.display = 'none';
+    if (cls) cls.style.display = 'none';
     if (trow) { trow.classList.add('done'); trow.classList.remove('running'); }
   } else {
     if (trow) trow.classList.remove('done');
     if (t.running) {
       btn.innerHTML = ICO_PAUSE; btn.className = 'tbtn run'; btn.title = 'Pause';
       if (rst) rst.style.display = '';
+      if (cls) cls.style.display = '';
     } else if (t.remaining < t.secs) {
       btn.innerHTML = ICO_PLAY;  btn.className = 'tbtn';     btn.title = 'Resume';
       if (rst) rst.style.display = '';
+      if (cls) cls.style.display = '';
     } else {
       btn.innerHTML = ICO_PLAY;  btn.className = 'tbtn';     btn.title = 'Start';
       if (rst) rst.style.display = 'none';
+      if (cls) cls.style.display = 'none';
     }
   }
 }
@@ -1059,10 +1520,30 @@ function timerAction(key) {
         updateTimerDisplay(key);
         updateTimerButtons(key);
         renderStickyBar();
+        playTimerAlert();
       }
     }, 1000);
   }
   renderStickyBar();
+}
+
+// Two-tone chime via Web Audio API (no <audio> element, works after any user
+// gesture on iOS) + a short vibration pattern where supported.
+function playTimerAlert() {
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [880, 660].forEach(function(freq, i) {
+      var osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      osc.connect(gain); gain.connect(ctx.destination);
+      var t0 = ctx.currentTime + i * 0.3;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.3, t0 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
+      osc.start(t0); osc.stop(t0 + 0.3);
+    });
+  } catch (e) {}
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
 }
 
 function stopTimer(key) {
@@ -1284,9 +1765,9 @@ function showShop() {
   renderShopList(G.week);
 }
 
-function renderShopList(week) {
-  var meals = week.meals || [];
-
+// Build the unified ingredient map and tobuy/avail/bought buckets, shared
+// between the shopping list itself and the day-nav badge count.
+function buildShopBuckets(meals, shopState) {
   // build unified ingredient map: key → {name, meals:[], avail, qtys:[]}
   var map = {};
   meals.forEach(function(meal) {
@@ -1305,7 +1786,7 @@ function renderShopList(week) {
   var avail = [], tobuy = [], bought = [];
   Object.keys(map).forEach(function(k) {
     var item = map[k];
-    var st = G.shopState[k];
+    var st = shopState[k];
     if (st === 'bought') {
       bought.push({key: k, item: item});
     } else {
@@ -1313,6 +1794,14 @@ function renderShopList(week) {
       if (item.avail || st === 'avail') avail.push({key: k, item: item});
     }
   });
+
+  return {map: map, avail: avail, tobuy: tobuy, bought: bought};
+}
+
+function renderShopList(week) {
+  var meals = week.meals || [];
+  var buckets = buildShopBuckets(meals, G.shopState);
+  var avail = buckets.avail, tobuy = buckets.tobuy, bought = buckets.bought;
 
   // count unique ingredients; mixed items (in both tobuy + avail) count once as not-done
   var pureAvail = avail.filter(function(e) { return !e.item.needsBuying; });
@@ -1366,6 +1855,8 @@ function renderShopList(week) {
   }
 
   setMain(html);
+  var shopBadge = document.querySelector('#wnb-shop .shop-count');
+  if (shopBadge) shopBadge.textContent = tobuy.length;
 }
 
 function toggleShopItem(key) {
@@ -1427,8 +1918,11 @@ function showWeekView() {
   G.isLibView = false;
   if (G.week) {
     renderDayNav(G.week);
-    var day = G.day || (G.week.meals && G.week.meals[0] && G.week.meals[0].id);
-    if (day) showDay(day);
+    if (G.planSubView === 'recipe' && G.day) {
+      showDay(G.day);
+    } else {
+      goToDayOrFirstSpecial(G.dayLabel || todayDayLabel());
+    }
   }
 }
 
@@ -1459,9 +1953,12 @@ async function showLib() {
   }
 }
 
-var _DAY_OFF   = {Monday:0,Tuesday:1,Wednesday:2,Thursday:3,Friday:4,Saturday:5,Sunday:6};
-var _MONTHS    = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-var _THIS_YEAR = new Date().getFullYear();
+var _DAY_OFF      = {Monday:0,Tuesday:1,Wednesday:2,Thursday:3,Friday:4,Saturday:5,Sunday:6};
+var _MONTHS       = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var _MONTHS_FULL  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+var _WEEKDAYS_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var _SHORT_DAY    = {Monday:'Mon',Tuesday:'Tue',Wednesday:'Wed',Thursday:'Thu',Friday:'Fri',Saturday:'Sat',Sunday:'Sun'};
+var _THIS_YEAR    = new Date().getFullYear();
 function _mealDate(weekStart, label) {
   if (!weekStart) return null;
   var d = new Date(weekStart + 'T12:00:00');
@@ -1475,6 +1972,14 @@ function _fmtDate(weekStart, label) {
   var d = _mealDate(weekStart, label);
   if (!d) return label || '';
   var s = d.getDate() + ' ' + _MONTHS[d.getMonth()];
+  if (d.getFullYear() !== _THIS_YEAR) s += ' ' + d.getFullYear();
+  return s;
+}
+// "Tuesday, May 20" — full weekday + month name, year omitted unless not this year
+function _fmtDateFull(weekStart, label) {
+  var d = _mealDate(weekStart, label);
+  if (!d) return label || '';
+  var s = _WEEKDAYS_FULL[d.getDay()] + ', ' + _MONTHS_FULL[d.getMonth()] + ' ' + d.getDate();
   if (d.getFullYear() !== _THIS_YEAR) s += ' ' + d.getFullYear();
   return s;
 }
@@ -1757,18 +2262,21 @@ if ('serviceWorker' in navigator) {
     }
     banner.style.display = 'block';
   }
+  // This page's own HTML was just served fresh over the network, so a SW
+  // update detected within a few seconds of load is just the SW catching up
+  // to what's already on screen — not something the user needs to act on.
+  // Only updates found later (while the tab stays open) warrant the banner.
+  var swReadyAt = Date.now();
+  var SW_GRACE_MS = 5000;
   function trackInstallingSW(sw) {
     sw.addEventListener('statechange', function() {
       if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+        if (Date.now() - swReadyAt < SW_GRACE_MS) return;
         showUpdateBanner();
       }
     });
   }
   navigator.serviceWorker.register('./sw.js').then(function(reg) {
-    // Already waiting (loaded after SW installed but before it activated)
-    if (reg.waiting && navigator.serviceWorker.controller) {
-      showUpdateBanner();
-    }
     // Currently installing
     if (reg.installing) {
       trackInstallingSW(reg.installing);
