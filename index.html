@@ -688,7 +688,7 @@ function closeWelcome() {
 
 var _tourHelpOnclick;
 
-function startTour() {
+async function startTour() {
   if (!window.driver || !window.driver.js) return; // CDN failed to load — fail quietly
 
   var steps = [];
@@ -699,6 +699,7 @@ function startTour() {
   var isPastToggled = false;  // true if G.isPast was temporarily forced to false
   var syntheticStep = null;   // {meal, idx} if a demo timer step was injected
   var timerResynced = false;  // true once the floating-timer step's one-shot resync has run
+  var demoInjected  = false;  // true if demo meal was added to G.week.meals for the tour
 
   // Re-resolve driver.js's highlighted element by re-querying the step's selector —
   // needed after onHighlightStarted mutates the DOM, since .refresh() only
@@ -711,6 +712,22 @@ function startTour() {
 
   var cookMeals  = (G.week.meals || []).filter(function(m) { return m.meal_type !== 'special'; });
   var todayMeals = cookMeals.filter(function(m) { return m.label === G.dayLabel; });
+
+  // If no real meals exist, fetch the shared demo recipe and inject it temporarily
+  if (!cookMeals.length) {
+    try {
+      var demoWeeks = await sbFetch('/rest/v1/meal_weeks?id=eq.tour-demo&select=meals');
+      var demoMeal  = demoWeeks && demoWeeks[0] && demoWeeks[0].meals && demoWeeks[0].meals[0];
+      if (demoMeal) {
+        if (!G.week.meals) G.week.meals = [];
+        G.week.meals = G.week.meals.concat([demoMeal]);
+        demoInjected = true;
+        cookMeals  = [demoMeal];
+        todayMeals = [];
+        renderDayNav(G.week);
+      }
+    } catch (e) { /* no demo available — tour will skip recipe steps */ }
+  }
 
   steps.push({
     element: '[data-tour="week-tabs"]',
@@ -935,11 +952,17 @@ function startTour() {
         delete G.timers[tourTimerKey];
       }
 
+      // Remove the injected demo meal
+      if (demoInjected) {
+        G.week.meals = G.week.meals.filter(function(m) { return m.id !== 'tour-demo-meal'; });
+        demoInjected = false;
+      }
+
       // Restore G.isPast and re-render whatever it affected
       if (isPastToggled) G.isPast = realIsPast;
-      if (isPastToggled || syntheticStep) {
+      if (isPastToggled || syntheticStep || !cookMeals.length) {
         renderDayNav(G.week);
-        if (G.planSubView === 'recipe' && G.day) showDay(G.day);
+        if (G.planSubView === 'recipe' && G.day && G.day !== 'tour-demo-meal') showDay(G.day);
         else showDayOverview(G.dayLabel);
       }
 
