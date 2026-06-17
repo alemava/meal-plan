@@ -937,7 +937,7 @@ async function startTour() {
       element: '#install-banner',
       popover: {
         title: 'Install mesa',
-        description: 'Follow the steps in this banner to install mesa on your device — it works offline and opens instantly, just like a native app.',
+        description: 'Once installed, mesa opens like a native app — fullscreen, faster, and works even without internet.',
         side: 'bottom', align: 'start'
       },
       onHighlightStarted: function() {
@@ -946,6 +946,7 @@ async function startTour() {
           tourBannerPrevDisplay = banner.style.display;
           initInstallBanner();
           banner.style.display = 'block';
+          window.scrollTo(0, 0);
           resyncHighlight(tourDriver.getActiveIndex());
         }
       },
