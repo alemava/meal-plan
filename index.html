@@ -745,6 +745,7 @@ async function startTour() {
   });
 
   var navSnapshot = null;
+  var shopTabSynced = false;
   steps.push({
     element: '[data-tour="day-tabs"]',
     popover: {
@@ -783,18 +784,18 @@ async function startTour() {
       side: 'bottom', align: 'start'
     },
     onHighlightStarted: function() {
-      if (!document.getElementById('wnb-shop')) {
+      var shopTab = document.getElementById('wnb-shop');
+      if (!shopTab) {
         isPastToggled = true;
         G.isPast = false;
         renderDayNav(G.week);
         if (G.planSubView === 'recipe' && G.day) showDay(G.day);
         else showDayOverview(G.dayLabel);
         resyncHighlight(tourDriver.getActiveIndex());
-      }
-      var shopTab = document.getElementById('wnb-shop');
-      if (shopTab) {
+      } else if (!shopTabSynced) {
+        shopTabSynced = true;
         shopTab.scrollIntoView({ inline: 'nearest', block: 'nearest' });
-        setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 150);
+        resyncHighlight(tourDriver.getActiveIndex());
       }
     }
   });
