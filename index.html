@@ -791,8 +791,11 @@ async function startTour() {
         else showDayOverview(G.dayLabel);
         resyncHighlight(tourDriver.getActiveIndex());
       }
-      var wnav = document.getElementById('wnav');
-      if (wnav) wnav.scrollTo({ left: 0, behavior: 'smooth' });
+      var shopTab = document.getElementById('wnb-shop');
+      if (shopTab) {
+        shopTab.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+        setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 150);
+      }
     }
   });
 
@@ -939,7 +942,7 @@ async function startTour() {
       },
       onHighlightStarted: function() {
         var banner = document.getElementById('install-banner');
-        if (banner) {
+        if (banner && tourBannerPrevDisplay === null) {
           tourBannerPrevDisplay = banner.style.display;
           initInstallBanner();
           banner.style.display = 'block';
