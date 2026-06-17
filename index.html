@@ -103,14 +103,6 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .bnlbl{font-size:.64rem;text-transform:none;letter-spacing:-0.01em;font-weight:600}
 
 #offline-bar{display:none;background:var(--red);color:#fff;font-size:.72rem;font-weight:600;text-align:center;padding:6px 12px;position:sticky;top:0;z-index:99;letter-spacing:0}
-#update-banner{display:none;background:var(--gnb);border-bottom:1px solid var(--gnc);padding:11px 16px;position:sticky;top:0;z-index:98;animation:ibfade .35s ease}
-.ub-inner{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:10px}
-.ub-icon{font-size:1.2rem;flex-shrink:0;line-height:1}
-.ub-text{flex:1;font-size:.77rem;line-height:1.4;color:var(--txt)}
-.ub-text b{font-weight:700;color:var(--grn)}
-.ub-text span{font-size:.71rem;color:var(--mut)}
-.ub-close{background:none;border:none;color:var(--mut);font-size:1rem;cursor:pointer;padding:4px 6px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;line-height:1;flex-shrink:0;border-radius:6px;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center}
-.ub-close:hover{color:var(--txt);background:var(--gnc)}
 #install-banner{display:none;background:var(--gnb);border-bottom:1px solid var(--gnc);padding:11px 16px;position:sticky;top:0;z-index:97;animation:ibfade .35s ease}
 @keyframes ibfade{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .ib-inner{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:10px}
@@ -334,15 +326,13 @@ section{margin-bottom:24px}
 </header>
 <nav class="wknav" id="wknav" data-tour="week-tabs"></nav>
 <div id="offline-bar">No connection — showing cached data</div>
-<div id="update-banner">
-  <div class="ub-inner">
-    <span class="ub-icon">🔄</span>
-    <div class="ub-text">
-      <b>New version available</b><br>
-      <span id="ub-msg"></span>
-    </div>
-    <button class="ub-close" id="ub-refresh" onclick="location.reload()" style="display:none;background:var(--grn);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation">Refresh</button>
-    <button class="ub-close" onclick="document.getElementById('update-banner').style.display='none'" title="Close" aria-label="Close">✕</button>
+<div id="update-modal" style="display:none;position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center">
+  <div style="position:absolute;inset:0;background:rgba(0,0,0,.55)"></div>
+  <div style="position:relative;background:var(--wht);border-radius:18px;padding:28px 24px;max-width:320px;width:90%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+    <div style="font-size:2rem;margin-bottom:10px">🔄</div>
+    <div style="font-size:1.05rem;font-weight:700;color:var(--txt);margin-bottom:6px">Update available</div>
+    <div style="font-size:.86rem;color:var(--mut);margin-bottom:20px">A new version of mesa is ready.</div>
+    <button onclick="location.reload()" style="background:var(--acc);color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:.9rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation">Refresh now</button>
   </div>
 </div>
 <div id="install-banner">
@@ -754,12 +744,34 @@ async function startTour() {
     }
   });
 
+  var navSnapshot = null;
   steps.push({
     element: '[data-tour="day-tabs"]',
     popover: {
       title: 'Pick a day',
-      description: 'Each day shows the meals planned for it — tap to see the recipe.',
+      description: 'Tap to see the recipes planned for the day.',
       side: 'bottom', align: 'start'
+    },
+    onHighlightStarted: function() {
+      var wnav = document.getElementById('wnav');
+      if (wnav) {
+        navSnapshot = { html: wnav.innerHTML, display: wnav.style.display };
+        wnav.innerHTML =
+          '<button class="wnb">Mon</button>'
+        + '<button class="wnb on">Tue<span class="day-count">2</span></button>'
+        + '<button class="wnb">Wed<span class="day-count">3</span></button>'
+        + '<button class="wnb">Thu</button>';
+        wnav.style.display = 'flex';
+        setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 60);
+      }
+    },
+    onDeselected: function() {
+      var wnav = document.getElementById('wnav');
+      if (wnav && navSnapshot) {
+        wnav.innerHTML = navSnapshot.html;
+        wnav.style.display = navSnapshot.display;
+        navSnapshot = null;
+      }
     }
   });
 
@@ -767,7 +779,7 @@ async function startTour() {
     element: '[data-tour="shopping-tab"]',
     popover: {
       title: 'Shopping list',
-      description: "Counts what's left to buy for the week.",
+      description: 'All the ingredients you need for the week.',
       side: 'bottom', align: 'start'
     },
     onHighlightStarted: function() {
@@ -829,7 +841,7 @@ async function startTour() {
         element: '[data-tour="floating-timer"]',
         popover: {
           title: 'Timers stay with you',
-          description: "Once a timer is running, it floats here as you scroll — and beeps when it's done.",
+          description: "Once a timer is running, it floats here as you scroll — so you never lose track while cooking.",
           side: 'bottom', align: 'start'
         },
         onHighlightStarted: function() {
@@ -887,7 +899,7 @@ async function startTour() {
         element: '[data-tour="stop-cooking"]',
         popover: {
           title: 'Exit cook mode here',
-          description: 'Tap ✕ Stop to leave cook mode, release the screen lock, and return to the recipe.',
+          description: "Tap ✕ Stop when you're done — exits cook mode and releases the screen lock.",
           side: 'bottom', align: 'start'
         },
         onHighlightStarted: function() {
@@ -901,13 +913,48 @@ async function startTour() {
     element: '[data-tour="all-recipes-nav"]',
     popover: {
       title: 'Your recipe library',
-      description: "Browse favourites or every recipe you've ever planned — search included.",
+      description: 'Every recipe from every week, all in one place.',
       side: 'top', align: 'start'
     },
     onHighlightStarted: function() {
       if (G.cookingMode) exitCookingMode();
     }
   });
+
+  var tourBannerPrevDisplay = null;
+  var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  var _ua = navigator.userAgent;
+  var canInstall = !isStandalone && (
+    window.deferredInstallPrompt ||
+    /iphone|ipad|ipod/i.test(_ua) ||
+    (/macintosh/i.test(_ua) && /safari/i.test(_ua) && !/chrome|chromium|edg/i.test(_ua) && navigator.maxTouchPoints <= 1)
+  );
+  if (canInstall) {
+    steps.push({
+      element: '#install-banner',
+      popover: {
+        title: 'Install mesa',
+        description: 'Follow the steps in this banner to install mesa on your device — it works offline and opens instantly, just like a native app.',
+        side: 'bottom', align: 'start'
+      },
+      onHighlightStarted: function() {
+        var banner = document.getElementById('install-banner');
+        if (banner) {
+          tourBannerPrevDisplay = banner.style.display;
+          initInstallBanner();
+          banner.style.display = 'block';
+          resyncHighlight(tourDriver.getActiveIndex());
+        }
+      },
+      onDeselected: function() {
+        var banner = document.getElementById('install-banner');
+        if (banner && tourBannerPrevDisplay !== null) {
+          banner.style.display = tourBannerPrevDisplay;
+          tourBannerPrevDisplay = null;
+        }
+      }
+    });
+  }
 
   steps.push({
     element: '[data-tour="help-icon"]',
@@ -2270,20 +2317,9 @@ function updateNavTabLabel(mealId) {
 
 // ── PWA: Service worker + offline indicator ──────────────────────
 if ('serviceWorker' in navigator) {
-  function showUpdateBanner() {
-    var banner = document.getElementById('update-banner');
-    if (!banner) return;
-    var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-    var msg = document.getElementById('ub-msg');
-    var refreshBtn = document.getElementById('ub-refresh');
-    if (isStandalone) {
-      if (msg) msg.textContent = 'Close and reopen the app to update';
-      if (refreshBtn) refreshBtn.style.display = 'none';
-    } else {
-      if (msg) msg.textContent = 'Refresh the page to get the latest version';
-      if (refreshBtn) refreshBtn.style.display = '';
-    }
-    banner.style.display = 'block';
+  function showUpdateModal() {
+    var modal = document.getElementById('update-modal');
+    if (modal) modal.style.display = 'flex';
   }
   // This page's own HTML was just served fresh over the network, so a SW
   // update detected within a few seconds of load is just the SW catching up
@@ -2295,7 +2331,7 @@ if ('serviceWorker' in navigator) {
     sw.addEventListener('statechange', function() {
       if (sw.state === 'installed' && navigator.serviceWorker.controller) {
         if (Date.now() - swReadyAt < SW_GRACE_MS) return;
-        showUpdateBanner();
+        showUpdateModal();
       }
     });
   }
