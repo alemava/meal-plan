@@ -2327,16 +2327,9 @@ if ('serviceWorker' in navigator) {
     var modal = document.getElementById('update-modal');
     if (modal) modal.style.display = 'flex';
   }
-  // This page's own HTML was just served fresh over the network, so a SW
-  // update detected within a few seconds of load is just the SW catching up
-  // to what's already on screen — not something the user needs to act on.
-  // Only updates found later (while the tab stays open) warrant the banner.
-  var swReadyAt = Date.now();
-  var SW_GRACE_MS = 5000;
   function trackInstallingSW(sw) {
     sw.addEventListener('statechange', function() {
       if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-        if (Date.now() - swReadyAt < SW_GRACE_MS) return;
         showUpdateModal();
       }
     });
