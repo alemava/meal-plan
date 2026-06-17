@@ -758,7 +758,8 @@ async function startTour() {
       if (wnav) {
         navSnapshot = { html: wnav.innerHTML, display: wnav.style.display };
         wnav.innerHTML =
-          '<button class="wnb">Mon</button>'
+          '<button class="wnb shop-tab" style="pointer-events:none">🛒 Shopping<span class="shop-count">5</span></button>'
+        + '<button class="wnb">Mon</button>'
         + '<button class="wnb on">Tue<span class="day-count">2</span></button>'
         + '<button class="wnb">Wed<span class="day-count">3</span></button>'
         + '<button class="wnb">Thu</button>';
