@@ -369,6 +369,7 @@ section{margin-bottom:24px}
       <button class="tw-btn tw-primary" onclick="closeWelcome(); localStorage.setItem('mesa-tour-seen','1'); startTour();">Show me around</button>
       <button class="tw-btn tw-secondary" onclick="closeWelcome(); localStorage.setItem('mesa-tour-seen','1');">Skip tutorial</button>
     </div>
+    <div id="tw-version" style="font-size:.7rem;color:var(--hnt);text-align:center;margin-top:12px"></div>
   </div>
 </div>
 
@@ -399,6 +400,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
+var APP_VERSION = 'v83';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -669,6 +671,8 @@ async function init() {
 function showWelcome() {
   var modal = document.getElementById('tour-welcome');
   if (modal) modal.classList.add('open');
+  var vEl = document.getElementById('tw-version');
+  if (vEl) vEl.textContent = APP_VERSION;
 }
 
 function closeWelcome() {
