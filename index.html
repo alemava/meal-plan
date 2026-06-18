@@ -332,6 +332,7 @@ section{margin-bottom:24px}
     <div style="font-size:2rem;margin-bottom:10px">🔄</div>
     <div style="font-size:1.05rem;font-weight:700;color:var(--txt);margin-bottom:6px">Update available</div>
     <div style="font-size:.86rem;color:var(--mut);margin-bottom:20px">A new version of mesa is ready.</div>
+    <div id="update-version" style="font-size:.72rem;color:var(--hnt);margin-bottom:20px;margin-top:-14px"></div>
     <button onclick="location.reload()" style="background:var(--acc);color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:.9rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation">Refresh now</button>
   </div>
 </div>
@@ -400,7 +401,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v83';
+var APP_VERSION = 'v85';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -2330,6 +2331,8 @@ if ('serviceWorker' in navigator) {
   function showUpdateModal() {
     var modal = document.getElementById('update-modal');
     if (modal) modal.style.display = 'flex';
+    var vEl = document.getElementById('update-version');
+    if (vEl) vEl.textContent = APP_VERSION;
   }
   function trackInstallingSW(sw) {
     sw.addEventListener('statechange', function() {
