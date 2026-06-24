@@ -440,7 +440,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v88';
+var APP_VERSION = 'v89';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -910,14 +910,14 @@ async function startTour() {
       + '<div class="day-h">Tuesday</div>'
       + '<div class="day-sub">2 meals planned</div>'
       + '<div class="meal-card" style="pointer-events:none">'
-        + '<div class="meal-card-ph" style="background:var(--acl)">🌅</div>'
+        + '<img class="meal-card-img" src="' + SB + '/storage/v1/object/public/recipe-images/tour-demo-tour-demo-breakfast.jpg" alt="" loading="lazy">'
         + '<div class="meal-card-body">'
           + '<div class="meal-card-type">Breakfast</div>'
           + '<div class="meal-card-ttl">Greek Yogurt with Honey &amp; Walnuts</div>'
           + '<div class="meal-card-meta">⏱ 5 min · 🔥 320 kcal</div>'
         + '</div></div>'
       + '<div class="meal-card" style="pointer-events:none">'
-        + '<div class="meal-card-ph" style="background:var(--gnb)">🍽</div>'
+        + '<img class="meal-card-img" src="' + SB + '/storage/v1/object/public/recipe-images/tour-demo-tour-demo-meal.jpg" alt="" loading="lazy">'
         + '<div class="meal-card-body">'
           + '<div class="meal-card-type">Dinner</div>'
           + '<div class="meal-card-ttl">Spaghetti Carbonara</div>'
