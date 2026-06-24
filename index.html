@@ -361,7 +361,7 @@ section{margin-bottom:24px}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
   </button>
 </header>
-<nav class="wknav" id="wknav" data-tour="week-tabs"></nav>
+<nav class="wknav" id="wknav"></nav>
 <div id="offline-bar">No connection — showing cached data</div>
 <div id="update-modal" style="display:none;position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center">
   <div style="position:absolute;inset:0;background:rgba(0,0,0,.55)"></div>
@@ -381,7 +381,7 @@ section{margin-bottom:24px}
     <button class="ib-close" onclick="dismissInstallBanner()" title="Dismiss" aria-label="Dismiss">✕</button>
   </div>
 </div>
-<nav class="wnav" id="wnav" data-tour="day-tabs"></nav>
+<nav class="wnav" id="wnav"></nav>
 <main class="content" id="main">
   <div class="loader"><div class="spin"></div><span>Loading…</span></div>
 </main>
@@ -440,7 +440,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v89';
+var APP_VERSION = 'v90';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -841,6 +841,36 @@ async function startTour() {
     }, 120);
   }
 
+  // Tab rows (week-tabs, day-tabs) are full-width flex containers centered
+  // around a narrower group of pills, so highlighting the row itself lights
+  // up a lot of empty space. This keeps an invisible, fixed-position marker
+  // div sized to just the union of the pills' own rects, and points driver.js
+  // at that instead — same node reused/repositioned in place each call, never
+  // destroyed, so it can't hit the stale-element bug fixed above.
+  function syncTabMarker(markerId, container, childSelector) {
+    if (!container) return null;
+    var children = container.querySelectorAll(childSelector);
+    if (!children.length) return null;
+    var rects = Array.prototype.map.call(children, function(el) { return el.getBoundingClientRect(); });
+    var left   = Math.min.apply(null, rects.map(function(r) { return r.left; }));
+    var right  = Math.max.apply(null, rects.map(function(r) { return r.right; }));
+    var top    = Math.min.apply(null, rects.map(function(r) { return r.top; }));
+    var bottom = Math.max.apply(null, rects.map(function(r) { return r.bottom; }));
+    var marker = document.getElementById(markerId);
+    if (!marker) {
+      marker = document.createElement('div');
+      marker.id = markerId;
+      marker.style.position = 'fixed';
+      marker.style.pointerEvents = 'none';
+      document.body.appendChild(marker);
+    }
+    marker.style.left   = left + 'px';
+    marker.style.top    = top + 'px';
+    marker.style.width  = (right - left) + 'px';
+    marker.style.height = (bottom - top) + 'px';
+    return marker;
+  }
+
   var cookMeals  = (G.week.meals || []).filter(function(m) { return m.meal_type !== 'special'; });
   var todayMeals = cookMeals.filter(function(m) { return m.label === G.dayLabel; });
 
@@ -862,7 +892,7 @@ async function startTour() {
   }
 
   steps.push({
-    element: '[data-tour="week-tabs"]',
+    element: '#tour-week-tab-marker',
     popover: {
       title: 'Jump between weeks',
       description: "Tap to see last week, this week, or what's coming up next.",
@@ -881,8 +911,14 @@ async function startTour() {
           + '<button class="wktab on">' + curLbl + '</button>'
           + '<button class="wktab">' + nextLbl + '</button>';
         wknav.style.display = 'flex';
-        setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 60);
       }
+      var firstRun = !document.getElementById('tour-week-tab-marker');
+      syncTabMarker('tour-week-tab-marker', wknav, '.wktab');
+      setTimeout(function() {
+        syncTabMarker('tour-week-tab-marker', wknav, '.wktab');
+        if (tourDriver) tourDriver.refresh();
+      }, 60);
+      if (firstRun) resyncHighlight(tourDriver.getActiveIndex());
     }
   });
 
@@ -950,7 +986,7 @@ async function startTour() {
   // nav back (Shopping list, below) — and as a safety net in onDestroyed if
   // the tour is closed mid-pair.
   steps.push({
-    element: '[data-tour="day-tabs"]',
+    element: '#tour-day-tab-marker',
     popover: {
       title: 'Pick a day',
       description: 'Tap to see the recipes planned for the day.',
@@ -958,7 +994,13 @@ async function startTour() {
     },
     onHighlightStarted: function() {
       injectDemoDayState();
-      setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 60);
+      var firstRun = !document.getElementById('tour-day-tab-marker');
+      syncTabMarker('tour-day-tab-marker', document.getElementById('wnav'), '.wnb');
+      setTimeout(function() {
+        syncTabMarker('tour-day-tab-marker', document.getElementById('wnav'), '.wnb');
+        if (tourDriver) tourDriver.refresh();
+      }, 60);
+      if (firstRun) resyncHighlight(tourDriver.getActiveIndex());
     }
   });
 
@@ -1189,6 +1231,10 @@ async function startTour() {
     showProgress: true,
     onDestroyed: function() {
       restoreDemoDayState(); // safety net if the tour was closed while still on the day-tabs/#tour-day-demo pair — no-op otherwise
+      ['tour-week-tab-marker', 'tour-day-tab-marker'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.remove();
+      });
       var help = document.querySelector('.mh-help');
       if (help && _tourHelpOnclick !== undefined) {
         help.onclick = _tourHelpOnclick;
