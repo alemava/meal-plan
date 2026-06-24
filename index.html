@@ -950,7 +950,7 @@ async function startTour() {
     },
     onHighlightStarted: function() {
       injectDemoDayState();
-      resyncHighlight(tourDriver.getActiveIndex());
+      setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 60);
     },
     onDeselected: function() {
       restoreDemoDayState();
