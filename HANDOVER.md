@@ -98,3 +98,13 @@ Based on a deep-research pass (no mainstream recipe app — Paprika, NYT Cooking
 **Soft cap on scaling** — the research recommends ~4x as a practical ceiling, above which recipes should be cooked in repeated batches rather than scaled further. `recipes.serves_max` already encodes exactly this per-recipe (we set it independently per dish, e.g. 4 for pan-fried things, 6 for a stew) — validates that decision from Phase 3, nothing to change.
 
 **Explicitly NOT built**: the actual computation engine (turning category + exponent into a real scaled quantity), the per-step time model, and the batch-ceiling warning logic. The research itself says the exponents are "tunable defaults, not ground truth" — needs real testing against actual recipes before trusting the numbers, not just implementing them blind.
+
+---
+
+## 10. Tour fix — "Pick a day" step now shows matching demo content (DONE, unrelated to Phase 3)
+
+**Bug:** in `startTour()`, the "Pick a day" step injected a synthetic nav into `#wnav` showing a "Tue" pill with a badge of "2", but the actual content below in `#main` still showed whatever real day was active (usually 1 recipe) — the badge and the content disagreed.
+
+**Fix:** the same step now also injects synthetic day-overview content into `#main` (a Breakfast + a Dinner meal card) matching the "Tue 2" badge, via shared `injectDemoDayState()`/`restoreDemoDayState()` helpers. Added a new tour step right after it, highlighting that injected content, explaining a day can hold more than one recipe — placed before the existing "Shopping list" step.
+
+Purely synthetic/injected HTML for the tour overlay — doesn't read from `G.week.meals` or touch the schema, so it was safe to drop in regardless of the Phase 3/3b schema work happening in parallel. SW bumped to v87.
