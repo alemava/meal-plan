@@ -401,7 +401,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v85';
+var APP_VERSION = 'v86';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -750,7 +750,60 @@ async function startTour() {
   });
 
   var navSnapshot = null;
+  var mainSnapshot = null;
   var shopTabSynced = false;
+
+  function injectDemoDayState() {
+    var wnav = document.getElementById('wnav');
+    var main = document.getElementById('main');
+    if (wnav && navSnapshot === null) {
+      navSnapshot = { html: wnav.innerHTML, display: wnav.style.display };
+      wnav.innerHTML =
+        '<button class="wnb shop-tab" style="pointer-events:none">🛒 Shopping<span class="shop-count">5</span></button>'
+      + '<button class="wnb">Mon</button>'
+      + '<button class="wnb on">Tue<span class="day-count">2</span></button>'
+      + '<button class="wnb">Wed<span class="day-count">3</span></button>'
+      + '<button class="wnb">Thu</button>';
+      wnav.style.display = 'flex';
+    }
+    if (main && mainSnapshot === null) {
+      mainSnapshot = main.innerHTML;
+      main.innerHTML =
+        '<div id="tour-day-demo">'
+      + '<div class="day-h">Tuesday</div>'
+      + '<div class="day-sub">2 meals planned</div>'
+      + '<div class="meal-card" style="pointer-events:none">'
+        + '<div class="meal-card-ph" style="background:var(--acl)">🌅</div>'
+        + '<div class="meal-card-body">'
+          + '<div class="meal-card-type">Breakfast</div>'
+          + '<div class="meal-card-ttl">Greek Yogurt with Honey &amp; Walnuts</div>'
+          + '<div class="meal-card-meta">⏱ 5 min · 🔥 320 kcal</div>'
+        + '</div></div>'
+      + '<div class="meal-card" style="pointer-events:none">'
+        + '<div class="meal-card-ph" style="background:var(--gnb)">🍽</div>'
+        + '<div class="meal-card-body">'
+          + '<div class="meal-card-type">Dinner</div>'
+          + '<div class="meal-card-ttl">Spaghetti Carbonara</div>'
+          + '<div class="meal-card-meta">⏱ 25 min · 🔥 610 kcal</div>'
+        + '</div></div>'
+      + '</div>';
+    }
+  }
+
+  function restoreDemoDayState() {
+    var wnav = document.getElementById('wnav');
+    var main = document.getElementById('main');
+    if (wnav && navSnapshot !== null) {
+      wnav.innerHTML = navSnapshot.html;
+      wnav.style.display = navSnapshot.display;
+      navSnapshot = null;
+    }
+    if (main && mainSnapshot !== null) {
+      main.innerHTML = mainSnapshot;
+      mainSnapshot = null;
+    }
+  }
+
   steps.push({
     element: '[data-tour="day-tabs"]',
     popover: {
@@ -759,26 +812,27 @@ async function startTour() {
       side: 'bottom', align: 'start'
     },
     onHighlightStarted: function() {
-      var wnav = document.getElementById('wnav');
-      if (wnav) {
-        navSnapshot = { html: wnav.innerHTML, display: wnav.style.display };
-        wnav.innerHTML =
-          '<button class="wnb shop-tab" style="pointer-events:none">🛒 Shopping<span class="shop-count">5</span></button>'
-        + '<button class="wnb">Mon</button>'
-        + '<button class="wnb on">Tue<span class="day-count">2</span></button>'
-        + '<button class="wnb">Wed<span class="day-count">3</span></button>'
-        + '<button class="wnb">Thu</button>';
-        wnav.style.display = 'flex';
-        setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 60);
-      }
+      injectDemoDayState();
+      setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 60);
     },
     onDeselected: function() {
-      var wnav = document.getElementById('wnav');
-      if (wnav && navSnapshot) {
-        wnav.innerHTML = navSnapshot.html;
-        wnav.style.display = navSnapshot.display;
-        navSnapshot = null;
-      }
+      restoreDemoDayState();
+    }
+  });
+
+  steps.push({
+    element: '#tour-day-demo',
+    popover: {
+      title: "That day's recipes",
+      description: 'A day can hold more than one recipe — tap any of them to open it.',
+      side: 'bottom', align: 'start'
+    },
+    onHighlightStarted: function() {
+      injectDemoDayState();
+      setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 60);
+    },
+    onDeselected: function() {
+      restoreDemoDayState();
     }
   });
 
