@@ -37,6 +37,17 @@
 html,body{background:var(--bg)}
 body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;background:var(--bg);color:var(--txt);padding-bottom:70px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.login-card{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.login-logo{width:64px;height:64px;margin-bottom:18px}
+.login-tagline{color:var(--mut);font-size:.92rem;margin-bottom:28px;line-height:1.4}
+.login-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:13px 16px;border-radius:12px;font-size:.95rem;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;margin-bottom:10px;border:1.5px solid var(--brd2);background:var(--wht);color:var(--txt)}
+.login-facebook{background:#1877F2;border-color:#1877F2;color:#fff}
+.login-email-btn{background:var(--acc);border-color:var(--acc);color:#fff}
+.login-divider{color:var(--hnt);font-size:.8rem;margin:8px 0 14px}
+.login-email-input{width:100%;padding:13px 14px;border-radius:12px;border:1.5px solid var(--brd2);background:var(--wht);font-size:.95rem;margin-bottom:10px;color:var(--txt)}
+#login-status{font-size:.84rem;color:var(--mut);margin-top:10px;min-height:1.2em}
+
 header:not(.driver-popover-title){background:var(--bg);border-bottom:1px solid var(--brd);padding:14px 18px 10px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:center;gap:10px}
 .happ{display:block;height:26px;width:auto}
 .htagline{font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--hnt);border-left:1.5px solid var(--brd2);padding-left:10px;line-height:1}
@@ -47,6 +58,10 @@ header:not(.driver-popover-title){background:var(--bg);border-bottom:1px solid v
 .mh-help:hover{color:var(--acc);background:var(--acl)}
 .mh-help svg{width:20px;height:20px}
 body.cooking-mode .mh-help{display:none!important}
+.mh-logout{position:absolute;right:52px;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--hnt);padding:4px;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;display:flex;align-items:center;border-radius:8px;transition:color .15s,background .15s}
+.mh-logout:hover{color:var(--acc);background:var(--acl)}
+.mh-logout svg{width:19px;height:19px}
+body.cooking-mode .mh-logout{display:none!important}
 .cook-btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;border:none;background:var(--acc);color:#1a1a1a;font-weight:700;font-size:.9rem;border-radius:12px;padding:13px 16px;cursor:pointer;margin:14px 0 2px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:opacity .15s}
 .cook-btn:active{opacity:.8}
 .cook-btn svg{width:18px;height:18px;flex-shrink:0}
@@ -315,6 +330,25 @@ section{margin-bottom:24px}
 </style>
 </head>
 <body>
+<div id="login-screen">
+  <div class="login-card">
+    <img src="logo.svg" class="login-logo" alt="mesa">
+    <div class="login-tagline">Your weekly meal plan, shopping list and recipes</div>
+    <button id="login-google" class="login-btn login-google">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.85 2.09-1.81 2.73v2.27h2.92c1.71-1.57 2.69-3.88 2.69-6.64z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.92-2.27c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.34C2.44 15.98 5.48 18 9 18z"/><path fill="#FBBC05" d="M3.97 10.7A5.4 5.4 0 0 1 3.68 9c0-.59.1-1.17.29-1.7V4.96H.96A8.96 8.96 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3.01-2.34z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l3.01 2.34C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+      Continue with Google
+    </button>
+    <button id="login-facebook" class="login-btn login-facebook">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="#fff"><path d="M18 9a9 9 0 1 0-10.4 8.89v-6.29H5.31V9h2.29V6.8c0-2.26 1.34-3.5 3.4-3.5.97 0 1.98.17 1.98.17v2.18h-1.12c-1.1 0-1.44.68-1.44 1.39V9h2.46l-.39 2.6h-2.07v6.29A9 9 0 0 0 18 9z"/></svg>
+      Continue with Facebook
+    </button>
+    <div class="login-divider">or</div>
+    <input id="login-email" class="login-email-input" type="email" placeholder="you@email.com" autocomplete="email">
+    <button id="login-email-btn" class="login-btn login-email-btn">Send magic link</button>
+    <p id="login-status"></p>
+  </div>
+</div>
+<div id="app-shell" style="display:none">
 <header>
   <img src="logo.svg" class="happ" alt="mesa">
   <span class="htagline">Meal Plan</span>
@@ -322,6 +356,9 @@ section{margin-bottom:24px}
   <button class="cook-exit" data-tour="stop-cooking" onclick="exitCookingMode()">✕ Stop</button>
   <button class="mh-help" data-tour="help-icon" onclick="showWelcome()" title="Help &amp; tour" aria-label="Help and tour">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 4"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+  </button>
+  <button class="mh-logout" onclick="signOutMesa()" title="Sign out" aria-label="Sign out">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
   </button>
 </header>
 <nav class="wknav" id="wknav" data-tour="week-tabs"></nav>
@@ -373,7 +410,9 @@ section{margin-bottom:24px}
     <div id="tw-version" style="font-size:.7rem;color:var(--hnt);text-align:center;margin-top:12px"></div>
   </div>
 </div>
+</div> <!-- /#app-shell -->
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <script>
 // ── Install banner device icons ──────────────────────────────────
@@ -401,13 +440,20 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v85';
+var APP_VERSION = 'v86';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
 var ANON = _prod ? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZjbHVydWF1ZWV0a3RjdGR5cGxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMzUxNDgsImV4cCI6MjA5MDgxMTE0OH0.224fBOE3ItykxaGxwDHAugm-5_DWLoiPmn4PA1llaRE"
            : "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0Z3l0dGJvYnh0eGd0bm11eWFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3ODQwMTIsImV4cCI6MjA5NDM2MDAxMn0.b9babbTSjB4RfR3xQcB3FxfwnsjdUvObXyTq1TluD78";
-var SBH  = {"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+ANON};
+// ── Supabase Auth client + session ───────────────────────────────
+var sb = supabase.createClient(SB, ANON);
+var currentAccessToken = null; // updated by onAuthStateChange; null = not logged in
+
+function authHeaders(extra) {
+  var h = {"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+(currentAccessToken || ANON)};
+  return extra ? Object.assign({}, h, extra) : h;
+}
 
 // ── Supabase helpers ─────────────────────────────────────────────
 async function sbFetch(path, opts) {
@@ -415,10 +461,10 @@ async function sbFetch(path, opts) {
   var ctrl = new AbortController();
   var tid = setTimeout(function() { ctrl.abort(); }, 8000);
   try {
-    var merged = {headers: SBH, signal: ctrl.signal};
+    var merged = {headers: authHeaders(), signal: ctrl.signal};
     if (opts.method) merged.method = opts.method;
     if (opts.body)   merged.body   = opts.body;
-    if (opts.headers) merged.headers = Object.assign({}, SBH, opts.headers);
+    if (opts.headers) merged.headers = authHeaders(opts.headers);
     var r = await fetch(SB + path, merged);
     clearTimeout(tid);
     if (!r.ok) throw new Error(r.status + ' ' + await r.text());
@@ -430,6 +476,39 @@ async function sbFetch(path, opts) {
     clearTimeout(tid);
     throw e;
   }
+}
+
+// ── Recipe hydration ──────────────────────────────────────────────
+// meal_weeks.meals[] entries are slim references {id, label, recipe_id, people,
+// kcal, remaining, avail, meal_type} — the actual recipe content lives in
+// public.recipes. This merges that content onto each meal in place, so every
+// existing render function can keep reading meal.title/.ingredients/.steps/
+// .image_url exactly as before. `avail` (week-specific "already have this")
+// gets applied onto the hydrated ingredients by matching ingredient name.
+async function hydrateMeals(weeks) {
+  var ids = new Set();
+  weeks.forEach(function(w) {
+    (w.meals || []).forEach(function(m) { if (m.recipe_id) ids.add(m.recipe_id); });
+  });
+  if (!ids.size) return;
+  var recipes = await sbFetch('/rest/v1/recipes?id=in.(' + Array.from(ids).join(',') + ')&select=id,title,ingredients,steps,image_url,image_prompt,base_serves');
+  var byId = {};
+  recipes.forEach(function(r) { byId[r.id] = r; });
+  weeks.forEach(function(w) {
+    (w.meals || []).forEach(function(m) {
+      var r = byId[m.recipe_id];
+      if (!r) return;
+      var availSet = new Set(m.avail || []);
+      m.title        = r.title;
+      m.image_url    = r.image_url;
+      m.image_prompt = r.image_prompt;
+      m.steps        = r.steps;
+      m.ingredients  = (r.ingredients || []).map(function(ing) {
+        return Object.assign({}, ing, { avail: availSet.has(ing.name) });
+      });
+      if (m.people == null) m.people = r.base_serves;
+    });
+  });
 }
 
 // ── Global state ─────────────────────────────────────────────────
@@ -631,19 +710,76 @@ function triggerInstall() {
   });
 }
 
-// ── Init ─────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', init);
+// ── Auth ─────────────────────────────────────────────────────────
+// onAuthStateChange fires once immediately on subscribe with whatever session
+// localStorage already has (or null), then again on every login/logout/token
+// refresh — this single callback is the one source of truth for the whole
+// logged-in/out flow, so init() can't accidentally run twice for one login.
+var _appBooted = false;
 
-// First-visit welcome modal — independent of the async data load above,
-// so it appears even if the meal-plan fetch is slow.
-document.addEventListener('DOMContentLoaded', function() {
-  setTimeout(function() {
-    if (!localStorage.getItem('mesa-tour-seen')) showWelcome();
-  }, 400);
+function showLoginScreen() {
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app-shell').style.display = 'none';
+}
+function showAppShell() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-shell').style.display = '';
+}
+function loginStatus(msg) {
+  document.getElementById('login-status').textContent = msg || '';
+}
+
+sb.auth.onAuthStateChange(function(_event, session) {
+  currentAccessToken = session ? session.access_token : null;
+  if (session) {
+    showAppShell();
+    if (!_appBooted) {
+      _appBooted = true;
+      init().then(function() {
+        setTimeout(function() {
+          if (!localStorage.getItem('mesa-tour-seen')) showWelcome();
+        }, 400);
+      });
+    }
+  } else {
+    _appBooted = false;
+    showLoginScreen();
+  }
 });
 
+document.addEventListener('DOMContentLoaded', function() { initInstallBanner(); });
+
+document.getElementById('login-google').onclick = async function() {
+  loginStatus('');
+  var { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + window.location.pathname } });
+  if (error) loginStatus(error.message);
+};
+
+document.getElementById('login-facebook').onclick = async function() {
+  loginStatus('');
+  var { error } = await sb.auth.signInWithOAuth({ provider: 'facebook', options: { redirectTo: window.location.origin + window.location.pathname } });
+  if (error) loginStatus(error.message);
+};
+
+document.getElementById('login-email-btn').onclick = async function() {
+  var email = document.getElementById('login-email').value.trim();
+  if (!email) { loginStatus('Enter your email first.'); return; }
+  loginStatus('Sending…');
+  var { error } = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.origin + window.location.pathname } });
+  if (!error) {
+    loginStatus('Check your email and tap the link to sign in.');
+  } else if (/rate limit/i.test(error.message)) {
+    loginStatus('Email sign-in is temporarily unavailable (too many requests) — use Google or Facebook, or try again in an hour.');
+  } else {
+    loginStatus(error.message);
+  }
+};
+
+async function signOutMesa() {
+  await sb.auth.signOut();
+}
+
 async function init() {
-  initInstallBanner();
   try {
     var weeks = await sbFetch('/rest/v1/meal_weeks?select=id,title,subtitle,week_type,week_start&order=week_start.asc');
     G.weeks = weeks;
@@ -712,6 +848,7 @@ async function startTour() {
   if (!cookMeals.length) {
     try {
       var demoWeeks = await sbFetch('/rest/v1/meal_weeks?id=eq.tour-demo&select=meals');
+      if (demoWeeks && demoWeeks.length) await hydrateMeals(demoWeeks);
       var demoMeal  = demoWeeks && demoWeeks[0] && demoWeeks[0].meals && demoWeeks[0].meals[0];
       if (demoMeal) {
         if (!G.week.meals) G.week.meals = [];
@@ -1075,6 +1212,7 @@ async function loadWeek(id) {
       return;
     }
     G.week = weekArr[0];
+    await hydrateMeals([G.week]);
     G.shopState = (results[1] && results[1][0] && results[1][0].state) || {};
     G.reactionMap = {};
     (results[2] || []).forEach(function(f) { G.reactionMap[f.meal_id] = f.reaction || 'fav'; });
@@ -2026,6 +2164,7 @@ async function showLib() {
       sbFetch('/rest/v1/favourites?select=id,meal_id,week_id,reaction')
     ]);
     window._libAllWeeks  = results[0];
+    await hydrateMeals(window._libAllWeeks);
     window._libReactions = {};
     (results[1] || []).forEach(function(r) { window._libReactions[r.week_id + '-' + r.meal_id] = r.reaction; });
     renderLib();
@@ -2382,6 +2521,7 @@ async function refreshWeeks() {
     // check if current week has new meals (fetch only meals column)
     if (G.week) {
       var freshArr = await sbFetch('/rest/v1/meal_weeks?id=eq.' + encodeURIComponent(G.week.id) + '&select=id,meals');
+      if (freshArr && freshArr.length) await hydrateMeals(freshArr);
       var freshMeals = (freshArr && freshArr[0] && freshArr[0].meals) || [];
       if (freshMeals.length !== (G.week.meals || []).length) {
         G.week.meals = freshMeals;
