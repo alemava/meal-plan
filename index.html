@@ -440,7 +440,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v87';
+var APP_VERSION = 'v88';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -941,6 +941,14 @@ async function startTour() {
     }
   }
 
+  // Neither step below tears its own content down on deselect. driver.js
+  // resolves a step's element via querySelector *before* any callback runs,
+  // so destroying #tour-day-demo on the way out would make the very next
+  // lookup (in either direction) fail and fall back to a detached dummy
+  // element. Instead, like cooking-mode elsewhere in this tour, the synthetic
+  // state is torn down explicitly by whichever later step needs the real
+  // nav back (Shopping list, below) — and as a safety net in onDestroyed if
+  // the tour is closed mid-pair.
   steps.push({
     element: '[data-tour="day-tabs"]',
     popover: {
@@ -951,9 +959,6 @@ async function startTour() {
     onHighlightStarted: function() {
       injectDemoDayState();
       setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 60);
-    },
-    onDeselected: function() {
-      restoreDemoDayState();
     }
   });
 
@@ -965,11 +970,15 @@ async function startTour() {
       side: 'bottom', align: 'start'
     },
     onHighlightStarted: function() {
-      injectDemoDayState();
-      resyncHighlight(tourDriver.getActiveIndex());
-    },
-    onDeselected: function() {
-      restoreDemoDayState();
+      // Normally a no-op — the previous step already injected this. Only
+      // does real work when entered backward (e.g. from Shopping list, which
+      // already restored the real nav), mirroring the same
+      // check-then-resync pattern used for .rxn/start-cooking/floating-timer
+      // above: create what's missing, then force driver.js to re-resolve it.
+      if (!document.getElementById('tour-day-demo')) {
+        injectDemoDayState();
+        resyncHighlight(tourDriver.getActiveIndex());
+      }
     }
   });
 
@@ -981,6 +990,7 @@ async function startTour() {
       side: 'bottom', align: 'start'
     },
     onHighlightStarted: function() {
+      restoreDemoDayState(); // leaving the day-tabs/#tour-day-demo pair — restore the real nav before checking for it below
       var shopTab = document.getElementById('wnb-shop');
       if (!shopTab) {
         isPastToggled = true;
@@ -1178,6 +1188,7 @@ async function startTour() {
   tourDriver = window.driver.js.driver({
     showProgress: true,
     onDestroyed: function() {
+      restoreDemoDayState(); // safety net if the tour was closed while still on the day-tabs/#tour-day-demo pair — no-op otherwise
       var help = document.querySelector('.mh-help');
       if (help && _tourHelpOnclick !== undefined) {
         help.onclick = _tourHelpOnclick;
