@@ -528,7 +528,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v97';
+var APP_VERSION = 'v98';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -943,9 +943,9 @@ async function startTour() {
   // needed after onHighlightStarted mutates the DOM, since .refresh() only
   // re-measures whatever element was captured *before* onHighlightStarted ran.
   function resyncHighlight(idx) {
-    setTimeout(function() {
+    requestAnimationFrame(function() {
       if (tourDriver && tourDriver.getActiveIndex() === idx) tourDriver.moveTo(idx);
-    }, 120);
+    });
   }
 
   // Tab rows (week-tabs, day-tabs) are full-width flex containers centered
@@ -1162,7 +1162,7 @@ async function startTour() {
       popover: {
         title: 'Rate as you go',
         description: 'Tap 👍 to like, ❤️ to favourite, or 👎 to dislike any recipe — your picks help shape future weeks.',
-        side: 'left', align: 'start'
+        side: 'bottom', align: 'start'
       },
       onHighlightStarted: function() {
         if (!document.querySelector('.rxn')) {
