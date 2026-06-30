@@ -528,7 +528,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v96';
+var APP_VERSION = 'v97';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -2002,6 +2002,7 @@ function exitCookingMode() {
   G.cookingMode = false;
   document.body.classList.remove('cooking-mode');
   syncWakeLock();
+  if (G._pendingUpdate) { G._pendingUpdate = false; showUpdateModal(); }
 }
 
 // ── Screen Wake Lock ─────────────────────────────────────────────
@@ -2687,6 +2688,7 @@ function updateNavTabLabel(mealId) {
 // ── PWA: Service worker + offline indicator ──────────────────────
 if ('serviceWorker' in navigator) {
   function showUpdateModal() {
+    if (G.cookingMode) { G._pendingUpdate = true; return; }
     var modal = document.getElementById('update-modal');
     if (modal) modal.style.display = 'flex';
     var vEl = document.getElementById('update-version');
