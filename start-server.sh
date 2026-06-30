@@ -1,8 +1,9 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-# Start local HTTP server on port 8000
-python3 -m http.server 8000 &
+# Start local HTTP server on port 8000 (serve.py sends no-cache for sw.js so
+# iOS Safari picks up SW version bumps reliably)
+python3 serve.py 8000 &
 PY_PID=$!
 echo "✓ HTTP server → http://localhost:8000 (PID $PY_PID)"
 
