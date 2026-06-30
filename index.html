@@ -528,7 +528,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v93';
+var APP_VERSION = 'v94';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -858,13 +858,13 @@ document.addEventListener('DOMContentLoaded', function() { initInstallBanner(); 
 
 document.getElementById('login-google').onclick = async function() {
   loginStatus('');
-  var { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + window.location.pathname } });
+  var { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + window.location.pathname, queryParams: { prompt: 'select_account' } } });
   if (error) loginStatus(error.message);
 };
 
 document.getElementById('login-facebook').onclick = async function() {
   loginStatus('');
-  var { error } = await sb.auth.signInWithOAuth({ provider: 'facebook', options: { redirectTo: window.location.origin + window.location.pathname } });
+  var { error } = await sb.auth.signInWithOAuth({ provider: 'facebook', options: { redirectTo: window.location.origin + window.location.pathname, queryParams: { auth_type: 'reauthenticate' } } });
   if (error) loginStatus(error.message);
 };
 
