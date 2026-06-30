@@ -396,9 +396,9 @@ section{margin-bottom:24px}
     <img src="logo.svg" class="login-brand-logo" alt="mesa">
     <div class="login-brand-headline">Your week, already planned</div>
     <ul class="login-brand-props">
-      <li><span class="login-prop-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Plan your whole week in minutes</li>
-      <li><span class="login-prop-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Shopping list built automatically</li>
-      <li><span class="login-prop-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Personalised to how you eat</li>
+      <li><span class="login-prop-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Plan every meal of the week, in minutes</li>
+      <li><span class="login-prop-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Save money: recipes built on what you've already got</li>
+      <li><span class="login-prop-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Recipes matched to your taste, diet, and cooking time</li>
     </ul>
   </div>
   <div class="login-form-col">
@@ -528,7 +528,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v95';
+var APP_VERSION = 'v96';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -1336,6 +1336,7 @@ async function startTour() {
 
   tourDriver = window.driver.js.driver({
     showProgress: true,
+    animate: false,
     onDestroyed: function() {
       restoreDemoDayState(); // safety net if the tour was closed while still on the day-tabs/#tour-day-demo pair — no-op otherwise
       ['tour-week-tab-marker', 'tour-day-tab-marker'].forEach(function(id) {
