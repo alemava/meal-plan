@@ -214,7 +214,7 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .rxn.has-sel .rxn-btn.sel{opacity:1;transform:scale(1.1);position:relative;z-index:1;order:1;margin-right:0}
 .rxn.has-sel.just-clicked .rxn-btn:not(.sel){width:32px;margin-right:5px;opacity:0;transform:scale(1);pointer-events:none}
 /* Tour: show all reaction icons at full opacity while this widget is highlighted */
-.rxn.driver-active-element .rxn-btn{opacity:1!important;width:32px!important;transform:none!important}
+.rxn.driver-active-element .rxn-btn{opacity:1!important;width:32px!important;transform:none!important;transition:none!important}
 .rxn.driver-active-element .rxn-btn:not(:last-child){margin-right:5px!important}
 @media(hover:hover){
   .rxn:not(.has-sel) .rxn-btn:hover{opacity:1}
@@ -528,7 +528,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v98';
+var APP_VERSION = 'v99';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -1132,14 +1132,19 @@ async function startTour() {
   });
 
   steps.push({
-    element: '[data-tour="shopping-tab"]',
+    // Element is a function so restoreDemoDayState() runs *inside* driver.js's
+    // resolver — the real nav exists before querySelector fires, so the first
+    // resolution succeeds directly instead of falling back to dummy-center.
+    element: function() {
+      restoreDemoDayState();
+      return document.getElementById('wnb-shop');
+    },
     popover: {
       title: 'Shopping list',
       description: 'All the ingredients you need for the week.',
       side: 'bottom', align: 'start'
     },
     onHighlightStarted: function() {
-      restoreDemoDayState(); // leaving the day-tabs/#tour-day-demo pair — restore the real nav before checking for it below
       var shopTab = document.getElementById('wnb-shop');
       if (!shopTab) {
         isPastToggled = true;
@@ -1151,7 +1156,7 @@ async function startTour() {
       } else if (!shopTabSynced) {
         shopTabSynced = true;
         shopTab.scrollIntoView({ inline: 'nearest', block: 'nearest' });
-        resyncHighlight(tourDriver.getActiveIndex());
+        setTimeout(function() { if (tourDriver) tourDriver.refresh(); }, 60);
       }
     }
   });
