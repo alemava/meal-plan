@@ -37,16 +37,63 @@
 html,body{background:var(--bg)}
 body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;background:var(--bg);color:var(--txt);padding-bottom:70px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 
-#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(130% 85% at 50% -8%, var(--acl) 0%, var(--bg) 54%);position:relative;overflow:hidden}
+.login-brand-panel{display:none}
+.login-form-col{width:100%;display:flex;align-items:center;justify-content:center;position:relative;z-index:1}
+.login-mobile-decor{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+@keyframes mesaDrift{0%,100%{transform:translate(0,0)}50%{transform:translate(0,-14px)}}
+@keyframes mesaDrift2{0%,100%{transform:translate(0,0)}50%{transform:translate(0,16px)}}
+#login-transition{position:fixed;inset:0;z-index:4000;display:none;align-items:center;justify-content:center;background:radial-gradient(130% 85% at 50% -8%, var(--acl) 0%, var(--bg) 54%);opacity:1;transition:opacity .55s ease;overflow:hidden}
+#login-transition .lt-decor{position:absolute;border-radius:54% 46% 58% 42%/52% 48% 52% 48%}
+#login-transition .lt-d1{right:-60px;top:-40px;width:260px;height:260px;background:rgba(82,115,91,.16)}
+#login-transition .lt-d2{left:-50px;bottom:-40px;width:230px;height:230px;background:rgba(192,86,42,.12)}
+.lt-mark{position:relative;width:240px}
+.lt-word-svg{display:block;width:100%;height:auto}
+/* Dot position derived directly from logo.svg's own coordinates (viewBox
+   "24 60 140 65", circle cx=150 cy=76 r=7) so it lands exactly on the "a",
+   not an eyeballed approximation: (150-24)/140=90% across, (76-60)/65≈24.6%
+   down, diameter (7*2)/140=10% of the mark's rendered width. */
+.lt-dot{position:absolute;left:90%;top:24.615%;width:10%;aspect-ratio:1;margin-left:-12px;margin-top:-12px;border-radius:50%;background:var(--acc);transform:translate(-110px,150px) scale(6);transition:transform 1.05s cubic-bezier(.34,1.25,.4,1)}
+#login-transition.go .lt-dot{transform:translate(0,0) scale(1)}
 .login-card{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;text-align:center}
-.login-logo{width:64px;height:64px;margin-bottom:18px}
+.login-logo{height:34px;width:auto;margin-bottom:18px}
+.login-headline{font-size:1.3rem;font-weight:700;letter-spacing:-0.01em;color:var(--txt);margin-bottom:6px}
+.login-form-heading{display:none}
 .login-tagline{color:var(--mut);font-size:.92rem;margin-bottom:28px;line-height:1.4}
-.login-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:13px 16px;border-radius:12px;font-size:.95rem;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;margin-bottom:10px;border:1.5px solid var(--brd2);background:var(--wht);color:var(--txt)}
-.login-facebook{background:#1877F2;border-color:#1877F2;color:#fff}
+.login-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:13px 16px;border-radius:14px;font-size:.95rem;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;margin-bottom:10px;border:1.5px solid var(--brd2);background:var(--wht);color:var(--txt);transition:box-shadow .15s,border-color .15s}
+.login-google{box-shadow:var(--shd2)}
+.login-google:hover{border-color:var(--hnt)}
+.login-facebook{background:var(--wht);border-color:var(--brd2);color:var(--txt)}
+.login-facebook:hover{border-color:var(--hnt)}
 .login-email-btn{background:var(--acc);border-color:var(--acc);color:#fff}
+.login-email-btn:hover{background:var(--acd);border-color:var(--acd)}
 .login-divider{color:var(--hnt);font-size:.8rem;margin:8px 0 14px}
 .login-email-input{width:100%;padding:13px 14px;border-radius:12px;border:1.5px solid var(--brd2);background:var(--wht);font-size:.95rem;margin-bottom:10px;color:var(--txt)}
-#login-status{font-size:.84rem;color:var(--mut);margin-top:10px;min-height:1.2em}
+#login-status{font-size:.84rem;color:var(--mut);margin-top:10px;min-height:3.8em}
+.login-legal{color:var(--hnt);font-size:.74rem;line-height:1.45;margin-top:18px}
+
+@media (min-width:860px){
+  #login-screen{padding:0;background:var(--bg)}
+  /* align-items defaults to stretch on a column flex — left unset before,
+     the logo's invisible box stretched to the panel's full width, and since
+     SVGs center their content within their box by default, the visible
+     wordmark rendered centered instead of left-aligned. flex-start fixes
+     that and left-aligns every child to one edge in the same line. */
+  .login-brand-panel{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;flex:1;height:100vh;background:#f6f0e6;color:var(--txt);padding:48px 56px;box-sizing:border-box;position:relative;overflow:hidden}
+  .login-mobile-decor{display:none}
+  .login-brand-decor{position:absolute;inset:0;overflow:hidden;z-index:1;pointer-events:none}
+  .login-brand-logo,.login-brand-headline,.login-brand-props{position:relative;z-index:2}
+  .login-brand-logo{height:30px;width:auto;margin-bottom:28px}
+  .login-brand-headline{font-size:2.1rem;font-weight:800;letter-spacing:-0.03em;line-height:1.12;margin-bottom:24px;max-width:360px;color:var(--txt)}
+  .login-brand-bowl{display:none}
+  .login-brand-props{list-style:none;display:flex;flex-direction:column;gap:14px;font-size:.95rem;font-weight:500;max-width:360px;color:#4a4036}
+  .login-brand-props li{display:flex;align-items:center;gap:12px}
+  .login-prop-chip{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;background:var(--acc);flex-shrink:0}
+  .login-form-col{flex:1;height:100vh}
+  .login-logo{display:none}
+  .login-headline{display:none}
+  .login-form-heading{display:block;font-size:1.1rem;font-weight:700;color:var(--txt);margin-bottom:8px;letter-spacing:-0.01em}
+}
 
 header:not(.driver-popover-title){background:var(--bg);border-bottom:1px solid var(--brd);padding:14px 18px 10px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:center;gap:10px}
 .happ{display:block;height:26px;width:auto}
@@ -268,7 +315,9 @@ section{margin-bottom:24px}
 .sinput{width:100%;padding:11px 16px;border:1px solid var(--brd2);border-radius:12px;font-size:.89rem;background:var(--wht);outline:none;-webkit-appearance:none;color:var(--txt);font-family:inherit;transition:all .15s;box-shadow:var(--shd)}
 .sinput::placeholder{color:var(--hnt)}
 .sinput:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(192,86,42,0.12)}
-.empty{color:var(--hnt);font-size:.87rem;padding:20px 4px;text-align:center}
+.empty{position:relative;color:var(--mut);font-size:.9rem;font-weight:500;padding:40px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:15px;line-height:1.45}
+.empty::before{content:"";width:62px;height:62px;border-radius:58% 42% 55% 45%/52% 55% 45% 48%;background:radial-gradient(circle at 36% 30%, var(--gnb), var(--acl));border:1px solid var(--brd);animation:emptyFloat 7s ease-in-out infinite}
+@keyframes emptyFloat{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-7px) rotate(6deg)}}
 
 #sticky-bar{position:fixed;top:55px;left:0;right:0;z-index:98;display:none;padding:0 18px;pointer-events:none}
 .stk-inner{max-width:680px;margin:0 auto;padding:8px 0;pointer-events:all}
@@ -299,10 +348,12 @@ section{margin-bottom:24px}
 /* ── Welcome / tour-intro modal ──────────────────────────────────── */
 .tw-backdrop{display:none;position:fixed;inset:0;background:rgba(26,22,18,0.45);z-index:200;align-items:center;justify-content:center;padding:20px}
 .tw-backdrop.open{display:flex}
-.tw-card{position:relative;background:var(--wht);border-radius:18px;box-shadow:var(--shd2);padding:28px 24px;max-width:340px;width:100%;text-align:center}
+.tw-card{position:relative;overflow:hidden;background:var(--wht);border-radius:18px;box-shadow:var(--shd2);padding:28px 24px;max-width:340px;width:100%;text-align:center}
+.tw-decor{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.tw-card > *:not(.tw-decor){position:relative;z-index:1}
 .tw-close{position:absolute;top:10px;right:10px;border:none;background:none;color:var(--hnt);font-size:1rem;cursor:pointer;padding:8px;line-height:1;border-radius:8px;-webkit-tap-highlight-color:transparent}
 .tw-close:hover{color:var(--txt);background:var(--srf)}
-.tw-icon{display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;background:var(--acl);color:var(--acc);margin:0 auto 14px}
+.tw-icon{display:flex;align-items:center;justify-content:center;width:50px;height:50px;border-radius:58% 42% 55% 45%/52% 55% 45% 48%;background:var(--acl);color:var(--acc);margin:0 auto 14px}
 .tw-icon svg{width:24px;height:24px}
 .tw-ttl{font-size:1.1rem;font-weight:700;color:var(--txt);margin-bottom:8px;letter-spacing:-0.01em}
 .tw-body{font-size:.85rem;color:var(--mut);line-height:1.5;margin-bottom:20px}
@@ -331,21 +382,45 @@ section{margin-bottom:24px}
 </head>
 <body>
 <div id="login-screen">
-  <div class="login-card">
-    <img src="logo.svg" class="login-logo" alt="mesa">
-    <div class="login-tagline">Your weekly meal plan, shopping list and recipes</div>
-    <button id="login-google" class="login-btn login-google">
-      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.85 2.09-1.81 2.73v2.27h2.92c1.71-1.57 2.69-3.88 2.69-6.64z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.92-2.27c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.34C2.44 15.98 5.48 18 9 18z"/><path fill="#FBBC05" d="M3.97 10.7A5.4 5.4 0 0 1 3.68 9c0-.59.1-1.17.29-1.7V4.96H.96A8.96 8.96 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3.01-2.34z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l3.01 2.34C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
-      Continue with Google
-    </button>
-    <button id="login-facebook" class="login-btn login-facebook">
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="#fff"><path d="M18 9a9 9 0 1 0-10.4 8.89v-6.29H5.31V9h2.29V6.8c0-2.26 1.34-3.5 3.4-3.5.97 0 1.98.17 1.98.17v2.18h-1.12c-1.1 0-1.44.68-1.44 1.39V9h2.46l-.39 2.6h-2.07v6.29A9 9 0 0 0 18 9z"/></svg>
-      Continue with Facebook
-    </button>
-    <div class="login-divider">or</div>
-    <input id="login-email" class="login-email-input" type="email" placeholder="you@email.com" autocomplete="email">
-    <button id="login-email-btn" class="login-btn login-email-btn">Send magic link</button>
-    <p id="login-status"></p>
+  <div class="login-mobile-decor">
+    <span style="position:absolute;right:-50px;top:-20px;width:190px;height:190px;border-radius:54% 46% 58% 42%/52% 48% 52% 48%;background:rgba(82,115,91,.14);animation:mesaDrift 10s ease-in-out infinite"></span>
+    <span style="position:absolute;left:-46px;bottom:60px;width:170px;height:170px;border-radius:48% 52% 40% 60%/55% 42% 58% 45%;background:rgba(192,86,42,.10);animation:mesaDrift2 12s ease-in-out infinite"></span>
+    <span style="position:absolute;left:28px;top:130px;width:46px;height:46px;border-radius:50%;background:var(--acc);opacity:.85;animation:mesaDrift 8s ease-in-out infinite"></span>
+  </div>
+  <div class="login-brand-panel">
+    <div class="login-brand-decor">
+      <span style="position:absolute;right:-70px;top:-50px;width:300px;height:300px;border-radius:54% 46% 58% 42%/52% 48% 52% 48%;background:rgba(82,115,91,.16);animation:mesaDrift 10s ease-in-out infinite"></span>
+      <span style="position:absolute;left:-60px;bottom:-50px;width:260px;height:260px;border-radius:48% 52% 40% 60%/55% 42% 58% 45%;background:rgba(192,86,42,.12);animation:mesaDrift2 12s ease-in-out infinite"></span>
+      <span style="position:absolute;right:78px;bottom:120px;width:68px;height:68px;border-radius:50%;background:var(--acc);opacity:.9;animation:mesaDrift 8s ease-in-out infinite"></span>
+    </div>
+    <img src="logo.svg" class="login-brand-logo" alt="mesa">
+    <div class="login-brand-headline">Your week, already planned</div>
+    <ul class="login-brand-props">
+      <li><span class="login-prop-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Plan your whole week in minutes</li>
+      <li><span class="login-prop-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Shopping list built automatically</li>
+      <li><span class="login-prop-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Personalised to how you eat</li>
+    </ul>
+  </div>
+  <div class="login-form-col">
+    <div class="login-card">
+      <img src="logo.svg" class="login-logo" alt="mesa">
+      <div class="login-headline">Your week, already planned</div>
+      <div class="login-form-heading">Sign in or create your account</div>
+      <div class="login-tagline">Your weekly meal plan, shopping list and recipes</div>
+      <button id="login-google" class="login-btn login-google">
+        <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.85 2.09-1.81 2.73v2.27h2.92c1.71-1.57 2.69-3.88 2.69-6.64z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.92-2.27c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.34C2.44 15.98 5.48 18 9 18z"/><path fill="#FBBC05" d="M3.97 10.7A5.4 5.4 0 0 1 3.68 9c0-.59.1-1.17.29-1.7V4.96H.96A8.96 8.96 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3.01-2.34z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l3.01 2.34C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+        Continue with Google
+      </button>
+      <button id="login-facebook" class="login-btn login-facebook">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="#1877F2"><path d="M18 9a9 9 0 1 0-10.4 8.89v-6.29H5.31V9h2.29V6.8c0-2.26 1.34-3.5 3.4-3.5.97 0 1.98.17 1.98.17v2.18h-1.12c-1.1 0-1.44.68-1.44 1.39V9h2.46l-.39 2.6h-2.07v6.29A9 9 0 0 0 18 9z"/></svg>
+        Continue with Facebook
+      </button>
+      <div class="login-divider">or</div>
+      <input id="login-email" class="login-email-input" type="email" placeholder="you@email.com" autocomplete="email">
+      <button id="login-email-btn" class="login-btn login-email-btn">Send magic link</button>
+      <p id="login-status"></p>
+      <div class="login-legal">By continuing you agree to mesa's Terms and Privacy Policy.</div>
+    </div>
   </div>
 </div>
 <div id="app-shell" style="display:none">
@@ -397,6 +472,10 @@ section{margin-bottom:24px}
 
 <div id="tour-welcome" class="tw-backdrop">
   <div class="tw-card">
+    <div class="tw-decor" aria-hidden="true">
+      <span style="position:absolute;right:-44px;top:-36px;width:150px;height:150px;border-radius:54% 46% 58% 42%/52% 48% 52% 48%;background:rgba(82,115,91,.12)"></span>
+      <span style="position:absolute;left:-40px;bottom:-40px;width:140px;height:140px;border-radius:48% 52% 40% 60%/55% 42% 58% 45%;background:rgba(192,86,42,.10)"></span>
+    </div>
     <button class="tw-close" onclick="closeWelcome()" aria-label="Close">✕</button>
     <div class="tw-icon">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 4"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
@@ -411,6 +490,15 @@ section{margin-bottom:24px}
   </div>
 </div>
 </div> <!-- /#app-shell -->
+
+<div id="login-transition">
+  <span class="lt-decor lt-d1"></span>
+  <span class="lt-decor lt-d2"></span>
+  <div class="lt-mark">
+    <svg class="lt-word-svg" viewBox="24 60 140 65" xmlns="http://www.w3.org/2000/svg"><text x="96" y="114" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', 'Inter', sans-serif" font-size="58" font-weight="700" fill="#1a1612" text-anchor="middle" letter-spacing="-3">mesa</text></svg>
+    <span class="lt-dot"></span>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
@@ -440,7 +528,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v90';
+var APP_VERSION = 'v93';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -729,16 +817,35 @@ function loginStatus(msg) {
   document.getElementById('login-status').textContent = msg || '';
 }
 
+// Branded sign-in moment: a floating circle flies up and lands as the dot of
+// the mesa logo while the app boots underneath, then the overlay fades away.
+function playLoginTransition() {
+  var ov = document.getElementById('login-transition');
+  if (!ov) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  ov.style.display = 'flex';
+  ov.style.opacity = '1';
+  ov.classList.remove('go');
+  void ov.offsetWidth;
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() { ov.classList.add('go'); });
+  });
+  setTimeout(function() { ov.style.opacity = '0'; }, 1350);
+  setTimeout(function() { ov.style.display = 'none'; }, 1950);
+}
+
 sb.auth.onAuthStateChange(function(_event, session) {
   currentAccessToken = session ? session.access_token : null;
   if (session) {
+    var freshLogin = (_event === 'SIGNED_IN') && !_appBooted;
     showAppShell();
+    if (freshLogin) playLoginTransition();
     if (!_appBooted) {
       _appBooted = true;
       init().then(function() {
         setTimeout(function() {
           if (!localStorage.getItem('mesa-tour-seen')) showWelcome();
-        }, 400);
+        }, freshLogin ? 1900 : 400);
       });
     }
   } else {
