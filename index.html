@@ -528,7 +528,7 @@ window.onunhandledrejection = function(e) {
 };
 
 // ── Supabase config ──────────────────────────────────────────────
-var APP_VERSION = 'v94';
+var APP_VERSION = 'v95';
 var _prod = location.hostname === 'alemava.github.io';
 var SB   = _prod ? "https://vcluruaueetktctdyplh.supabase.co"
                  : "https://jtgyttbobxtxgtnmuyas.supabase.co";
@@ -2753,6 +2753,9 @@ document.addEventListener('visibilitychange', function() {
   if (document.visibilityState !== 'visible') return;
   syncWakeLock(); // re-request if timers are still running (OS releases lock on background)
   refreshWeeks(); // silently refresh week list in case new recipes were uploaded
+  // Retry the SW update check on every foreground event — the check on initial
+  // page load can silently fail if the dev tunnel wasn't running yet at that moment.
+  if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistration().then(function(r) { if (r) r.update(); });
   Object.keys(G.timers).forEach(function(k) {
     var t = G.timers[k];
     if (!t || !t.running || !t.startedAt) return;
