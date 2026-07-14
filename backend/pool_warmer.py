@@ -135,7 +135,10 @@ async def _expand_some_stubs(weights: dict[str, int]) -> tuple[int, list[str]]:
             await expand_stub(dict(stub))
             expanded += 1
         except Exception as exc:  # noqa: BLE001 — one bad expansion shouldn't kill the batch
-            errors.append(str(exc))
+            # str(exc) alone is "" for exceptions raised with no message
+            # (seen live: AIProviderExhausted) — include the type so the
+            # report is never a silently empty string.
+            errors.append(f"{type(exc).__name__}: {exc}")
     return expanded, errors
 
 
@@ -152,7 +155,7 @@ async def run_pool_warmer() -> dict:
             await _generate_one_stub(cuisine, meal_type)
             created += 1
         except Exception as exc:  # noqa: BLE001 — one bad stub shouldn't kill the batch
-            errors.append(str(exc))
+            errors.append(f"{type(exc).__name__}: {exc}")
 
     expanded, expansion_errors = await _expand_some_stubs(weights)
 

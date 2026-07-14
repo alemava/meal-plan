@@ -20,6 +20,7 @@ on demand.
 """
 
 import json
+import re
 from datetime import UTC, datetime
 
 from pydantic import ValidationError
@@ -312,6 +313,17 @@ async def _set_watermark(ts: datetime) -> None:
 # to nitpicky when asked an open-ended "is anything missing" question. This
 # version explicitly separates "unrecognizable without it" from "a common
 # but swappable extra" and asks it to default to ok:true when uncertain.
+#
+# Recalibrated again (2026-07-14, second pass) after a full-pool run showed
+# two more failure modes even with the above: (1) self-referential noise —
+# "Risotto" flagged for missing "risotto", "Fried Rice" for missing "fried
+# rice" — the model treating the dish's own category name as a missing
+# ingredient; (2) multi-sentence rambling replacing a short item name (seen
+# on Spaghetti Aglio e Olio: a 700-character stream-of-consciousness "missing"
+# entry). Both addressed below; _filter_self_contradicting below is the
+# separate, deterministic backstop for a THIRD failure mode this same run
+# confirmed — Chicken Pad Thai flagged for "missing: tamarind paste" while
+# tamarind paste was literally already in its ingredient list.
 SEMANTIC_SYSTEM_PROMPT = (
     "You are a culinary expert doing a LIGHT sanity check on recipes for a meal-planning app. "
     "Most recipes you review are already correct — your job is to catch only the rare, obvious "
@@ -322,8 +334,34 @@ SEMANTIC_SYSTEM_PROMPT = (
     "Do NOT flag minor, swappable, or optional details: garnishes, plain aromatics like garlic/"
     "onion/ginger, a substituted seasoning (e.g. soy sauce instead of fish sauce in a vegetarian "
     "version), a missing side, or ordinary stylistic variation. "
+    "Never list the dish's own name or category as a missing ingredient (e.g. never answer "
+    "'risotto' is missing from a risotto, or 'tacos' from tacos, or 'fried rice' from a fried "
+    "rice) — a dish cannot be missing itself, only a specific component within it. "
+    "Each entry in missing must be a short ingredient or component name only (2-5 words) — "
+    "never a sentence, never an explanation, never reasoning about the answer. "
     "If you are not CERTAIN the dish is unrecognizable without something, answer ok: true."
 )
+
+
+def _filter_self_contradicting(missing: list[str], ingredient_names: list[str]) -> list[str]:
+    """Deterministic backstop, not a judgment call: found live (2026-07-14)
+    that the model flagged Chicken Pad Thai for 'missing: tamarind paste'
+    while tamarind paste was already, literally, in its ingredient list. A
+    claim whose own significant words are already present among the recipe's
+    real ingredient names is a self-contradiction — drop it before it's ever
+    persisted as a finding, rather than trusting the model's claim blindly."""
+    haystack = " | ".join(name.lower() for name in ingredient_names)
+    kept = []
+    for item in missing:
+        # Only check the claim itself, not any trailing explanation the
+        # model tacked on (rare now given the length instruction above, but
+        # cheap to guard against).
+        head = re.split(r"[,.]| — | - ", item, maxsplit=1)[0]
+        words = [w for w in re.findall(r"[a-zA-Z]+", head.lower()) if len(w) > 3]
+        if words and all(w in haystack for w in words):
+            continue
+        kept.append(item)
+    return kept
 
 
 async def _check_defining_ingredients(row) -> str | None:
@@ -339,9 +377,10 @@ async def _check_defining_ingredients(row) -> str | None:
         # false "missing everything" flag.
         return None
 
-    names = ", ".join(
+    ingredient_names = [
         i.get("name", "") for i in ingredients if isinstance(i, dict) and i.get("name")
-    )
+    ]
+    names = ", ".join(ingredient_names)
     if not names:
         return None
 
@@ -361,9 +400,11 @@ async def _check_defining_ingredients(row) -> str | None:
         # "couldn't determine" rather than letting it kill the whole batch
         # and stall the watermark on an otherwise-healthy provider.
         return None
-    if result.get("ok", True) or not result.get("missing"):
+
+    missing = _filter_self_contradicting(result.get("missing") or [], ingredient_names)
+    if result.get("ok", True) or not missing:
         return None
-    return f"missing: {', '.join(result['missing'])}"
+    return f"missing: {', '.join(missing)}"
 
 
 async def _semantic_findings() -> dict:

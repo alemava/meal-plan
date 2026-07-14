@@ -120,6 +120,20 @@ this specific user, never true of the recipe in general:
 - `remaining` (array of free-text strings, optional) — human-readable leftover notes
   for the shopping list, not tied to a specific ingredient name.
 
+## Backend jsonb columns — never pre-serialize
+
+`backend/app/core/db.py` registers an asyncpg codec that already does
+`json.dumps`/`json.loads` on every `json`/`jsonb` column. Any Python code going
+through `db.pool()` (app code or an ad-hoc script) must pass a native
+`list`/`dict` for a jsonb parameter — **never** `json.dumps(...)` it first.
+Doing so double-encodes: the column ends up holding a jsonb *string* whose
+content is JSON text, instead of a jsonb *array*/*object* — `jsonb_typeof()`
+shows `'string'` instead of `'array'`/`'object'`. This happened for real
+(2026-07-14): ad-hoc repair scripts touching `recipes.ingredients`/`steps`
+directly caused it on 108 rows, later fixed with `(col #>> '{}')::jsonb`
+and closed off with a CHECK constraint (`recipes_ingredients_is_array`,
+`recipes_steps_is_array`) so it fails loudly instead of corrupting silently.
+
 ### Updating the meal in Supabase (use MCP execute_sql)
 Project IDs: dev `jtgyttbobxtxgtnmuyas` · prod `vcluruaueetktctdyplh`
 
