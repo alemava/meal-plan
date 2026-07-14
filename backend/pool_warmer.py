@@ -28,6 +28,9 @@ EXPANSION_QUOTA_THRESHOLD_PERCENT = 50
 
 SYSTEM_PROMPT = (
     "You invent simple, appealing recipe ideas for a meal-planning app. "
+    "The dish comes first, not the ingredients: every idea must be a REAL, recognizable dish "
+    "that genuinely exists in that cuisine's tradition — never invent an unusual ingredient "
+    "combination or a generic 'fiesta'/'twist'-style mashup just to sound appealing. "
     "Respond with ONLY a JSON object: "
     '{"title": "...", "brief_description": "...", "main_protein": "...", "image_prompt": "..."}. '
     "image_prompt should describe the finished plated dish visually (colours, textures, "

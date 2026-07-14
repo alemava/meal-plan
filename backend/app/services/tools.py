@@ -71,7 +71,16 @@ TOOL_SCHEMAS = [
                             "properties": {
                                 "name": {"type": "string"},
                                 "qty": {"type": "number"},
-                                "unit": {"type": "string"},
+                                "unit": {
+                                    "type": "string",
+                                    "description": (
+                                        "Metric only — g, kg, ml, l, tsp, tbsp, or a plain count "
+                                        "(whole, clove, slice, piece, sheet, fillet, leaf, etc). "
+                                        "Never imperial (no lb, oz, pound, inch, cup as a weight "
+                                        "substitute) — a real, recurring failure mode where quantities "
+                                        "silently fail to sum correctly on the shopping list."
+                                    ),
+                                },
                                 "scaling": {
                                     "type": "string",
                                     "enum": ["linear", "seasoning", "heat", "fixed"],
