@@ -56,6 +56,21 @@ async def get_minute_usage(provider: str) -> int:
     )
 
 
+async def get_percent_used(provider: str) -> float:
+    """How much of today's budget is gone, whichever metric actually governs
+    this provider (request count vs. token count — see DAILY_TOKEN_CAPS'
+    comment on why a provider can't just be checked both ways generically).
+    0.0 for a provider with no configured cap at all. Used by pool_warmer.py
+    to decide whether there's headroom left for optional quota-spending work
+    beyond live user traffic, and extracted here (rather than duplicated)
+    since get_usage_report below needs the exact same arithmetic."""
+    if provider in DAILY_CAPS:
+        return round(await get_daily_usage(provider) / DAILY_CAPS[provider] * 100, 1)
+    if provider in DAILY_TOKEN_CAPS:
+        return round(await get_daily_token_usage(provider) / DAILY_TOKEN_CAPS[provider] * 100, 1)
+    return 0.0
+
+
 async def can_call(provider: str) -> bool:
     """The single check every OpenRouter call site (sync fallback and the
     async steps worker) must pass before attempting a call."""
@@ -177,7 +192,7 @@ async def get_usage_report() -> dict:
         report[provider] = {
             "usage_today": usage,
             "daily_cutoff": daily_cap,
-            "percent_used": round(usage / daily_cap * 100, 1),
+            "percent_used": await get_percent_used(provider),
             "requests_per_hour": round(rate_per_hour, 1),
             "projected_exhaustion_hour_of_day": (
                 round(daily_cap / rate_per_hour, 1) if rate_per_hour > 0 else None
@@ -209,7 +224,7 @@ async def get_usage_report() -> dict:
         report[provider] = {
             "tokens_used_today": tokens_used,
             "daily_token_cutoff": token_cap,
-            "percent_used": round(tokens_used / token_cap * 100, 1),
+            "percent_used": await get_percent_used(provider),
             "tokens_per_hour": round(rate_per_hour, 1),
             "projected_exhaustion_hour_of_day": (
                 round(token_cap / rate_per_hour, 1) if rate_per_hour > 0 else None

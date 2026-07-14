@@ -46,6 +46,17 @@ class Settings(BaseSettings):
     steps_generation_queue: str = "steps-generation"
     backend_base_url: str = "https://mesa-backend-904247737916.europe-west2.run.app"
 
+    # Async recipe-batch generation (2026-07-14) — separate queue from
+    # steps-generation: very different payload/duration-per-attempt profile
+    # (a full multi-slot batch vs. one recipe's steps). frontend_base_url
+    # points notification emails back into the app — the ngrok tunnel is
+    # deliberately what's used here, not the GitHub Pages prod URL, since
+    # Generate is dev-only (BACKEND is null on the prod hostname, no prod
+    # Cloud Run deploy exists yet) and the tunnel is the only origin that's
+    # actually reachable from a real email link today.
+    generate_recipes_queue: str = "generate-recipes-batch"
+    frontend_base_url: str = "https://regroup-affluent-bunkhouse.ngrok-free.dev"
+
     # Paid escape hatches. image_paid_backstop defaults True: cheap
     # (~$0.0005/image) and, since Pollinations was removed, it's the only
     # real fallback left before the queue+placeholder. See cost_status.py's

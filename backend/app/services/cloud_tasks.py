@@ -61,3 +61,43 @@ async def enqueue_steps_generation(recipe_id: str, user_id: str) -> None:
             json=task,
         )
         resp.raise_for_status()
+
+
+async def enqueue_generate_recipes_batch(job_id: str) -> None:
+    """Same pattern as enqueue_steps_generation, separate queue (very
+    different payload/duration-per-attempt profile: a full multi-slot batch
+    vs. one recipe's steps). Payload is just the job_id — the generation_jobs
+    row is the source of truth for what to generate, not the task body, so a
+    retry can't drift from what was actually requested."""
+    settings = get_settings()
+    access_token = await _get_access_token()
+
+    worker_url = f"{settings.backend_base_url}/api/internal/generate-recipes-batch"
+    body = json.dumps({"job_id": job_id}).encode()
+
+    task = {
+        "task": {
+            "httpRequest": {
+                "url": worker_url,
+                "httpMethod": "POST",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "X-Internal-Secret": settings.cron_secret,
+                },
+                "body": base64.b64encode(body).decode(),
+            },
+            "dispatchDeadline": "540s",
+        }
+    }
+
+    queue_url = (
+        f"https://cloudtasks.googleapis.com/v2/projects/{settings.gcp_project_id}"
+        f"/locations/{settings.gcp_region}/queues/{settings.generate_recipes_queue}/tasks"
+    )
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            queue_url,
+            headers={"Authorization": f"Bearer {access_token}"},
+            json=task,
+        )
+        resp.raise_for_status()

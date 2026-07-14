@@ -1,27 +1,120 @@
 import asyncio
+from collections.abc import Awaitable, Callable
+from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core import db
 from app.core.security import get_current_user_id
-from app.models.generate import GenerateRecipesRequest, GenerateRecipesResponse, SlotOptions
+from app.models.generate import (
+    GenerateRecipesAccepted,
+    GenerateRecipesRequest,
+    GenerateRecipesResponse,
+    GenerationJobStatus,
+    SlotOptions,
+    SlotRequest,
+)
 from app.models.recipes import RecipeOption
-from app.services import fresh_generation, guardrails, history, image_chain, pool_search, profile
+from app.services import cloud_tasks, fresh_generation, guardrails, history, image_chain, pool_search, profile
 from app.services.ai_client import AIProviderExhausted
 from app.services.rate_limit import check_and_record_generation
 from app.services.stub_expansion import expand_stub
 
 router = APIRouter(prefix="/api", tags=["recipes"])
 
+# Slot-complete callback signature: (slot_index, day, meal_type, options) -> None.
+# Used by the async worker (app/api/internal.py) to persist each slot's
+# result incrementally as it finishes, so a retried job only redoes whatever
+# didn't complete last time instead of the whole batch from scratch.
+OnSlotComplete = Callable[[int, str, str, list[dict]], Awaitable[None]]
 
-@router.post("/generate-recipes", response_model=GenerateRecipesResponse)
+
+@router.post("/generate-recipes", response_model=GenerateRecipesAccepted, status_code=202)
 async def generate_recipes(
     request: GenerateRecipesRequest, user_id: str = Depends(get_current_user_id)
 ):
+    """Async-from-the-start (2026-07-14): the actual generation work always
+    runs in the Cloud Tasks worker (app/api/internal.py's
+    generate-recipes-batch handler), never inline in this request — a Cloud
+    Run container can freeze its CPU once a response is sent, so there's no
+    reliable way to "keep working after responding" other than a fresh,
+    separately-dispatched request. The frontend polls GET
+    /api/generate-recipes/{job_id}; for the common case (small batch) this
+    still feels synchronous since the worker usually finishes in a few
+    seconds, but nothing here is time-limited by this request's own
+    lifetime."""
     monday = guardrails.normalise_to_monday(request.week_start)
-    week_id = guardrails.week_id_for(monday)
+    await check_and_record_generation(user_id, guardrails.week_id_for(monday))
 
-    await check_and_record_generation(user_id, week_id)
+    row = await db.pool().fetchrow(
+        "INSERT INTO generation_jobs (user_id, week_start, slots_request) "
+        "VALUES ($1, $2, $3::jsonb) RETURNING id",
+        user_id,
+        monday,
+        [s.model_dump(mode="json") for s in request.slots],
+    )
+    job_id = str(row["id"])
+    # Deliberately NOT swallowed (unlike select_recipe.py's steps-generation
+    # enqueue, which can safely no-op since the meal is already committed
+    # regardless) — nothing has happened yet here, so an enqueue failure
+    # should surface as a normal error through the same apiFetch error path
+    # the frontend already has for everything else.
+    await cloud_tasks.enqueue_generate_recipes_batch(job_id)
+
+    return GenerateRecipesAccepted(job_id=job_id)
+
+
+@router.get("/generate-recipes/{job_id}", response_model=GenerationJobStatus)
+async def get_generation_job(job_id: str, user_id: str = Depends(get_current_user_id)):
+    row = await db.pool().fetchrow(
+        "SELECT * FROM generation_jobs WHERE id = $1 AND user_id = $2", job_id, user_id
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job = dict(row)
+    result = None
+    if job["status"] == "complete":
+        result = _job_result_to_response(job)
+
+    return GenerationJobStatus(job_id=job_id, status=job["status"], result=result, error=job.get("error"))
+
+
+def _job_result_to_response(job: dict) -> GenerateRecipesResponse:
+    """job['result'] is stored as {"<slot_idx>": {day, meal_type, options}} —
+    reassemble it into the real response shape, in original slot order."""
+    monday = guardrails.normalise_to_monday(job["week_start"])
+    week_id = guardrails.week_id_for(monday)
+    slots_request = job["slots_request"]
+    result = job["result"] or {}
+
+    slots = [
+        SlotOptions(
+            day=result[str(idx)]["day"],
+            meal_type=result[str(idx)]["meal_type"],
+            options=[RecipeOption(**o) for o in result[str(idx)]["options"]],
+        )
+        for idx in range(len(slots_request))
+    ]
+    return GenerateRecipesResponse(week_id=week_id, week_start=monday, slots=slots)
+
+
+async def _run_generation(
+    user_id: str,
+    week_start: date,
+    slots: list[SlotRequest],
+    already_complete: dict[int, list[dict]] | None = None,
+    on_slot_complete: OnSlotComplete | None = None,
+) -> GenerateRecipesResponse:
+    """The actual generation pipeline — same logic as before this file's
+    async refactor, just extracted out of the route handler so both the
+    (now-thin) POST route's synchronous callers and the async worker can
+    reuse it identically. already_complete/on_slot_complete exist purely for
+    the worker's incremental-persistence/resume-on-retry behaviour; a plain
+    call with neither set behaves exactly as the old inline version did."""
+    monday = guardrails.normalise_to_monday(week_start)
+    week_id = guardrails.week_id_for(monday)
+    already_complete = already_complete or {}
 
     user_profile = await profile.load_profile(user_id)
     # Grows with every slot's picks below — a real gap found live: requesting
@@ -48,6 +141,16 @@ async def generate_recipes(
     # Spanish dishes in a row) even though the profile prefers several.
     used_cuisines: list[str] = []
 
+    # Seed cross-slot dedup state from whatever a PRIOR attempt already
+    # finished (worker retry case) — so a resumed job still avoids repeating
+    # those dishes/cuisines in the slots it still has left.
+    for options in already_complete.values():
+        used_recipe_ids.update(str(o["id"]) for o in options)
+        batch_history.extend(
+            {"title": o["title"], "main_protein": o.get("main_protein")} for o in options
+        )
+        used_cuisines.extend(o["cuisine"] for o in options if o.get("cuisine"))
+
     # Real bug hit live: a 15-slot batch (5 breakfast + 5 lunch + 5 dinner)
     # processed one slot at a time took 300s+ and got killed by Cloud Run's
     # own request timeout before finishing. Slots of the SAME meal_type must
@@ -60,11 +163,12 @@ async def generate_recipes(
     # breakfast+lunch+dinner batch) without touching that tuned dedup logic —
     # asyncio's single-threaded event loop means the shared lists/set below
     # are safely mutated across groups with no locking needed.
-    groups: dict[str, list[tuple[int, object]]] = {}
-    for idx, slot in enumerate(request.slots):
-        groups.setdefault(slot.meal_type, []).append((idx, slot))
+    groups: dict[str, list[tuple[int, SlotRequest]]] = {}
+    for idx, slot in enumerate(slots):
+        if idx not in already_complete:
+            groups.setdefault(slot.meal_type, []).append((idx, slot))
 
-    slot_options: dict[int, list[dict]] = {}
+    slot_options: dict[int, list[dict]] = dict(already_complete)
 
     async def _run_group(slots_with_idx):
         for idx, slot in slots_with_idx:
@@ -85,19 +189,21 @@ async def generate_recipes(
             )
             used_cuisines.extend(o["cuisine"] for o in options if o.get("cuisine"))
             slot_options[idx] = options
+            if on_slot_complete:
+                await on_slot_complete(idx, slot.day, slot.meal_type, options)
 
     await asyncio.gather(*(_run_group(group) for group in groups.values()))
 
-    slots = [
+    slots_out = [
         SlotOptions(
             day=slot.day,
             meal_type=slot.meal_type,
             options=[RecipeOption(**_to_option_dict(o)) for o in slot_options[idx]],
         )
-        for idx, slot in enumerate(request.slots)
+        for idx, slot in enumerate(slots)
     ]
 
-    return GenerateRecipesResponse(week_id=week_id, week_start=monday, slots=slots)
+    return GenerateRecipesResponse(week_id=week_id, week_start=monday, slots=slots_out)
 
 
 async def _generate_options_for_slot(
@@ -111,7 +217,21 @@ async def _generate_options_for_slot(
     used_cuisines: list[str] | None = None,
 ) -> list[dict]:
     """ADR 2 fallbacks: no qualifying pool match -> both fresh; generation
-    fails / cost kill-switch hit -> two pool recipes."""
+    fails / cost kill-switch hit -> two pool recipes.
+
+    2026-07-14 addition (deliberate trade-off, not a bug fix): the pool is
+    checked for a SECOND qualifying match before ever touching fresh
+    generation. If the pool alone can satisfy the slot, fresh generation is
+    skipped entirely — one fewer live AI call, and no image-generation call
+    either, since both pool matches already have images. Cost: the old rule
+    guaranteed one freshly-written option per slot (real novelty every time);
+    this trades that guarantee for cheaper serving once the pool is well
+    stocked (see pool_warmer.py's proportional-generation work) — accepted
+    knowingly, not an oversight. The proactive second search itself is free
+    either way (a Cloudflare embedding call + a DB query, no Groq/OpenRouter
+    spend), so computing it "just in case" costs nothing even on the slots
+    where it ends up unused.
+    """
     # Local copy, extended as each option within THIS slot is picked, so the
     # slot's own second option also avoids repeating the first one's cuisine
     # — not just cuisines from earlier slots in the batch.
@@ -128,6 +248,31 @@ async def _generate_options_for_slot(
             # branches below already handle pool_option=None correctly by
             # falling through to fresh generation.
             pool_option = None
+
+    # Proactive second pool search — computed before deciding whether fresh
+    # generation is needed at all, not just as the post-failure fallback the
+    # `pool_option and generation_failed` branch below already had. Kept
+    # around (not re-queried later) so that existing fallback branch can
+    # reuse it directly instead of duplicating the search.
+    second_pool_option = None
+    if pool_option:
+        second_pool_option = await pool_search.search_recipe_pool(
+            user_profile,
+            meal_type,
+            exclude_ids | {str(pool_option["id"])},
+            used_cuisines=used_cuisines + ([pool_option["cuisine"]] if pool_option.get("cuisine") else []),
+        )
+        if second_pool_option and second_pool_option["status"] == "stub":
+            try:
+                second_pool_option = await expand_stub(second_pool_option)
+            except AIProviderExhausted:
+                second_pool_option = None
+
+    if pool_option and second_pool_option:
+        options = [pool_option, second_pool_option]
+        await _log_suggestions(user_id, options)
+        return options
+
     if pool_option and pool_option.get("cuisine"):
         used_cuisines.append(pool_option["cuisine"])
 
@@ -182,22 +327,13 @@ async def _generate_options_for_slot(
         options = [o for o in (fresh_option, second_fresh) if o]
         fresh_options = options
     elif pool_option and generation_failed:
-        # search_recipe_pool's exclusion check compares against str(row["id"]) —
-        # pool_option["id"] is a raw UUID from asyncpg, so it must be
-        # stringified here or the exclusion silently never matches (a real bug
-        # seen live: the same pool recipe shown twice as both "options").
-        second_pool = await pool_search.search_recipe_pool(
-            user_profile,
-            meal_type,
-            exclude_ids | {str(pool_option["id"])},
-            used_cuisines=used_cuisines,
-        )
-        if second_pool and second_pool["status"] == "stub":
-            try:
-                second_pool = await expand_stub(second_pool)
-            except AIProviderExhausted:
-                second_pool = None
-        options = [o for o in (pool_option, second_pool) if o]
+        # second_pool_option was already searched for proactively above
+        # (before fresh generation was even attempted) — reaching this
+        # branch means it came back empty (if it hadn't, the early-exit
+        # above would have already returned), so there's nothing new a
+        # re-query would find. Reusing it here just skips a guaranteed-
+        # identical repeat search instead of re-running one.
+        options = [o for o in (pool_option, second_pool_option) if o]
     else:
         options = []
 

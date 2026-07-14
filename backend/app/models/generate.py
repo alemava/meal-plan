@@ -39,3 +39,18 @@ class GenerateRecipesResponse(BaseModel):
     week_id: str
     week_start: date
     slots: list[SlotOptions]
+
+
+class GenerateRecipesAccepted(BaseModel):
+    """202 response for the now-async POST /api/generate-recipes — the real
+    result is fetched via polling GET /api/generate-recipes/{job_id}."""
+
+    job_id: str
+    status: Literal["pending"] = "pending"
+
+
+class GenerationJobStatus(BaseModel):
+    job_id: str
+    status: Literal["pending", "running", "complete", "failed"]
+    result: GenerateRecipesResponse | None = None
+    error: str | None = None

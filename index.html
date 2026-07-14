@@ -585,6 +585,16 @@ async function apiFetch(path, opts) {
   return r.json();
 }
 
+// Captured as early as possible, before the auth gate below even runs — all
+// three login redirects (Google/Facebook's redirectTo, email OTP's
+// emailRedirectTo) drop the query string on the way back, so if this waited
+// until after auth resolved, a magic-link ?job= param would already be gone.
+// localStorage survives the redirect round-trip; the URL param doesn't.
+(function captureIncomingJobLink() {
+  var jobId = new URLSearchParams(location.search).get('job');
+  if (jobId) localStorage.setItem('mesa-pending-job', jobId);
+})();
+
 function authHeaders(extra) {
   var h = {"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+(currentAccessToken || ANON)};
   return extra ? Object.assign({}, h, extra) : h;
@@ -903,6 +913,7 @@ sb.auth.onAuthStateChange(function(_event, session) {
         setTimeout(function() {
           if (!localStorage.getItem('mesa-tour-seen')) showWelcome();
         }, freshLogin ? 1900 : 400);
+        checkPendingGenerationJob();
       });
     }
   } else {
@@ -1680,6 +1691,85 @@ function renderGenerateForm() {
   renderGenerateResults(); // restore whatever was already generated this session, if anything
 }
 
+// Applies a completed GenerateRecipesResponse (whether from the immediate
+// poll loop below or from a deep-linked job checked after login) into
+// G.genResults, pooled by meal_type exactly as the old synchronous flow did.
+function applyGenerationResult(data) {
+  if (data.week_id) G.week.id = data.week_id;
+  var pooled = {};
+  (data.slots || []).forEach(function(slot) {
+    if (!pooled[slot.meal_type]) pooled[slot.meal_type] = [];
+    (slot.options || []).forEach(function(opt) { pooled[slot.meal_type].push(opt); });
+  });
+  G.genResults = pooled;
+  G.genAssignments = {};
+  renderGenerateResults();
+}
+
+var GEN_BUSY_THRESHOLD_MS = 30000; // switch to "we'll email you" copy past this
+var GEN_POLL_INTERVAL_MS = 3000;   // normal poll cadence, feels near-instant for a fast batch
+var GEN_POLL_BACKOFF_MS = 15000;   // once in busy mode, no UX reason to keep polling every 3s
+
+// Backend is async-from-the-start (2026-07-14): POST just enqueues and
+// returns a job_id immediately, real work happens in a Cloud Tasks worker
+// regardless of how long it takes or whether anyone's still watching. This
+// polls for completion; for the common case (small batch) the job usually
+// finishes within a poll or two and this never visibly differs from the old
+// synchronous flow. Past GEN_BUSY_THRESHOLD_MS it swaps to "we'll email
+// you" copy WITHOUT stopping the poll — closing the tab is safe, the worker
+// keeps going and the eventual email carries a link back in (see
+// checkPendingGenerationJob).
+async function pollGenerationJob(jobId, resultsEl) {
+  var startedAt = Date.now();
+  while (true) {
+    var status;
+    try {
+      status = await apiFetch('/api/generate-recipes/' + jobId);
+    } catch (e) {
+      resultsEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + esc(e.message) + '</div>';
+      return;
+    }
+    if (status.status === 'complete') { applyGenerationResult(status.result); return; }
+    if (status.status === 'failed') {
+      resultsEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + esc(status.error || 'unknown error') + '</div>';
+      return;
+    }
+    var busy = (Date.now() - startedAt) > GEN_BUSY_THRESHOLD_MS;
+    if (busy) {
+      resultsEl.innerHTML = '<div class="loader"><div class="spin"></div><span>The kitchen is busy right now — we\'ll email you when your options are ready. Feel free to close this tab.</span></div>';
+    }
+    await new Promise(function(resolve) { setTimeout(resolve, busy ? GEN_POLL_BACKOFF_MS : GEN_POLL_INTERVAL_MS); });
+  }
+}
+
+// Runs once per fresh login/session (see onAuthStateChange) — if the user
+// arrived via a "your options are ready" email link (captured into
+// localStorage by captureIncomingJobLink before the auth gate could drop
+// the query string), jump straight to the finished results instead of
+// silently landing on whatever week/day they'd normally see first.
+async function checkPendingGenerationJob() {
+  var jobId = localStorage.getItem('mesa-pending-job');
+  if (!jobId) return;
+  localStorage.removeItem('mesa-pending-job');
+  showGenerateView();
+  var resultsEl = document.getElementById('gen-results');
+  resultsEl.innerHTML = '<div class="loader"><div class="spin"></div><span>Loading your recipe options…</span></div>';
+  try {
+    var status = await apiFetch('/api/generate-recipes/' + jobId);
+    if (status.status === 'complete') {
+      applyGenerationResult(status.result);
+    } else if (status.status === 'failed') {
+      resultsEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + esc(status.error || 'unknown error') + '</div>';
+    } else {
+      // Rare long-tail case (e.g. still retrying through a quota-exhausted
+      // day) — resume polling rather than leaving a dead loading state.
+      await pollGenerationJob(jobId, resultsEl);
+    }
+  } catch (e) {
+    resultsEl.innerHTML = '<div class="err-box">Couldn\'t load your recipe options:\n' + esc(e.message) + '</div>';
+  }
+}
+
 async function runGenerateRecipes() {
   var resultsEl = document.getElementById('gen-results');
   resultsEl.innerHTML = '<div class="loader"><div class="spin"></div><span>Thinking of something good…</span></div>';
@@ -1706,23 +1796,11 @@ async function runGenerateRecipes() {
   }
 
   try {
-    var data = await apiFetch('/api/generate-recipes', {method:'POST', body: JSON.stringify({
+    var accepted = await apiFetch('/api/generate-recipes', {method:'POST', body: JSON.stringify({
       week_start: G.week.week_start,
       slots: slots
     })});
-    // Syncs a not-yet-existing week's real id back onto G.week (see
-    // planNextWeek) — meal_weeks only gets a row on the first selection, so
-    // before that G.week.id is null and this is the only way to learn it.
-    if (data.week_id) G.week.id = data.week_id;
-
-    var pooled = {};
-    (data.slots || []).forEach(function(slot) {
-      if (!pooled[slot.meal_type]) pooled[slot.meal_type] = [];
-      (slot.options || []).forEach(function(opt) { pooled[slot.meal_type].push(opt); });
-    });
-    G.genResults = pooled;
-    G.genAssignments = {};
-    renderGenerateResults();
+    await pollGenerationJob(accepted.job_id, resultsEl);
   } catch(e) {
     resultsEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + e.message + '</div>';
   }
