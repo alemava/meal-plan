@@ -10,10 +10,64 @@ from app.services import ai_client
 # safety net: sanitize the model's own output, not just its inputs.
 _ALLOWED_TAG_PATTERN = re.compile(r"&lt;(/?)strong&gt;", re.IGNORECASE)
 
+# Matches any real HTML tag — used post-sanitization, where only <strong>
+# should still exist as a literal tag (everything else was escaped away).
+_ANY_TAG_PATTERN = re.compile(r"</?([a-zA-Z]+)[^>]*>")
+
+
+class GeneratedStepsInvalid(Exception):
+    """Reject-and-regenerate contract, same as guardrails.GeneratedRecipeInvalid
+    — raised by validate_steps, deliberately left uncaught in generate_steps
+    so it propagates to the caller's own retry mechanism (the Cloud Tasks
+    worker in internal.py never catches exceptions from generate_steps, by
+    design, so Cloud Tasks' own retry policy re-dispatches the whole task)."""
+
 
 def sanitize_step_text(text: str) -> str:
     escaped = html.escape(text, quote=False)
     return _ALLOWED_TAG_PATTERN.sub(lambda m: f"<{m.group(1)}strong>", escaped)
+
+
+def validate_steps(steps: list[dict]) -> None:
+    """Part B (2026-07-14) — deterministic backstop for two real bugs found
+    by the content-quality audit: steps missing a title entirely (Churros,
+    all 5 steps) and escaped-HTML artifacts leaking into stored text
+    (&lt;em&gt;socarrat&lt;/em&gt; in Seafood Fideuà — sanitize_step_text
+    correctly stripped a disallowed <em> tag but left the escaped entity
+    text behind). Runs on the ALREADY-sanitized steps, so it's checking
+    exactly what's about to be stored, not the model's raw output."""
+    if not steps:
+        raise GeneratedStepsInvalid("No steps generated")
+
+    prev_remaining = None
+    for i, step in enumerate(steps):
+        if not (step.get("title") or "").strip():
+            raise GeneratedStepsInvalid(f"Step {i + 1} missing title")
+
+        text = step.get("text") or ""
+        if not text.strip():
+            raise GeneratedStepsInvalid(f"Step {i + 1} missing text")
+        if "&lt;" in text or "&gt;" in text:
+            raise GeneratedStepsInvalid(f"Step {i + 1} has an escaped-HTML artifact")
+        for tag in _ANY_TAG_PATTERN.findall(text):
+            if tag.lower() != "strong":
+                raise GeneratedStepsInvalid(f"Step {i + 1} has a disallowed tag <{tag}>")
+
+        remaining = step.get("remaining")
+        if remaining is None:
+            raise GeneratedStepsInvalid(f"Step {i + 1} missing remaining")
+        if prev_remaining is not None and remaining > prev_remaining:
+            raise GeneratedStepsInvalid(f"Step {i + 1} remaining increases vs previous step")
+        prev_remaining = remaining
+
+        for timer in step.get("timers") or []:
+            if not timer.get("label") or not isinstance(timer.get("seconds"), (int, float)):
+                raise GeneratedStepsInvalid(f"Step {i + 1} has a malformed timer")
+            if timer.get("alertAt") and not timer.get("alertMsg"):
+                raise GeneratedStepsInvalid(f"Step {i + 1} has alertAt without alertMsg")
+
+    if steps[-1].get("remaining") != 0:
+        raise GeneratedStepsInvalid(f"Last step remaining={steps[-1].get('remaining')!r}, not 0")
 
 
 STEPS_TOOLS = [
@@ -146,4 +200,5 @@ async def generate_steps(recipe: dict) -> list[dict]:
     steps = result["steps"]
     for step in steps:
         step["text"] = sanitize_step_text(step.get("text") or "")
+    validate_steps(steps)
     return steps

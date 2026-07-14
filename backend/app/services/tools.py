@@ -1,4 +1,5 @@
 from app.services import history, pool_search
+from app.services.generation_rules import INGREDIENT_ITEM_SCHEMA, KCAL_COMPUTATION_RULE
 from app.services.profile import UserProfile
 
 # Canonical tool definitions — used by the live tool-use loop (OpenRouter/Groq)
@@ -56,43 +57,11 @@ TOOL_SCHEMAS = [
                     },
                     "kcal": {
                         "type": "integer",
-                        "description": (
-                            "Total kcal for the WHOLE recipe as written (base_serves servings), "
-                            "computed ingredient-by-ingredient from standard nutrition values "
-                            "(USDA or regional equivalent) at the exact qty/unit given — never an "
-                            "impression-based guess. Don't forget oils/fats (count every "
-                            "tablespoon) and dry vs cooked weight for pasta/rice."
-                        ),
+                        "description": KCAL_COMPUTATION_RULE,
                     },
                     "ingredients": {
                         "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "name": {"type": "string"},
-                                "qty": {"type": "number"},
-                                "unit": {
-                                    "type": "string",
-                                    "description": (
-                                        "Metric only — g, kg, ml, l, tsp, tbsp, or a plain count "
-                                        "(whole, clove, slice, piece, sheet, fillet, leaf, etc). "
-                                        "Never imperial (no lb, oz, pound, inch, cup as a weight "
-                                        "substitute) — a real, recurring failure mode where quantities "
-                                        "silently fail to sum correctly on the shopping list."
-                                    ),
-                                },
-                                "scaling": {
-                                    "type": "string",
-                                    "enum": ["linear", "seasoning", "heat", "fixed"],
-                                },
-                                "tier": {
-                                    "type": "string",
-                                    "enum": ["mandatory", "recommended", "optional"],
-                                },
-                                "allergen_tags": {"type": "array", "items": {"type": "string"}},
-                            },
-                            "required": ["name", "qty", "unit", "scaling", "tier"],
-                        },
+                        "items": INGREDIENT_ITEM_SCHEMA,
                     },
                 },
                 "required": [

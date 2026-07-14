@@ -44,6 +44,47 @@ class GeneratedRecipeInvalid(Exception):
     regenerate (step 19a), not to patch the recipe up."""
 
 
+# Canonical unit whitelist (2026-07-14) — same set as the content-quality
+# audit's scan script (final_scan.py's KNOWN_UNITS), promoted from a
+# scratchpad diagnostic into a permanent at-source guardrail. Neither
+# submit_recipe's nor submit_expansion's schema ever told the model units
+# must be metric until generation_rules.INGREDIENT_ITEM_SCHEMA added a
+# description — this is the deterministic backstop for when the model
+# ignores that description anyway (proven necessary: 15 imperial-unit
+# violations were produced by this session's own live testing, after the
+# historical unit sweep had already run and closed).
+ALLOWED_UNITS: frozenset[str] = frozenset(
+    {
+        "g", "kg", "ml", "l", "tsp", "tbsp", "cup", "cups",
+        "whole", "clove", "cloves", "piece", "pieces", "slice", "slices",
+        "can", "bunch", "handful", "head", "leaf", "leaves", "pinch",
+        "wedge", "wedges", "sprig", "sprigs", "stalk", "stalks",
+        "grams", "milliliters", "teaspoon", "teaspoons", "tablespoon", "tablespoons",
+        "medium", "large", "small", "fillet", "fillets", "portion",
+        "sheet", "sheets", "tin", "pack", "to taste",
+    }
+)
+
+
+def validate_ingredient_units(ingredients: list) -> None:
+    """Reject-and-regenerate counterpart to ALLOWED_UNITS. Same lenient
+    first-word match as the scan script (tolerates a parenthetical
+    clarification like 'cup (240ml)') so this doesn't flag formats the scan
+    itself considered fine — only a genuinely unrecognised/imperial/missing
+    unit trips it."""
+    for ingredient in ingredients:
+        unit = (ingredient.get("unit") or "").lower().strip()
+        if not unit:
+            raise GeneratedRecipeInvalid(f"Ingredient '{ingredient.get('name')}' has no unit")
+        head = unit.split("(")[0].strip()
+        first_word = head.split()[0] if head else ""
+        if unit not in ALLOWED_UNITS and first_word not in ALLOWED_UNITS:
+            raise GeneratedRecipeInvalid(
+                f"Ingredient '{ingredient.get('name')}' has a disallowed unit: "
+                f"'{ingredient.get('unit')}'"
+            )
+
+
 def validate_ingredient_shape(ingredients: list) -> None:
     """Runs before anything else touches the model's output (allergen safety
     net, then validate_generated_recipe below) — both assume every element is
@@ -66,6 +107,7 @@ def validate_generated_recipe(recipe: dict, profile: UserProfile, recent_titles:
     18b already asks the model to avoid these; this is the safety net for
     when the model ignores that instruction, not the primary mechanism."""
     ingredients = recipe.get("ingredients") or []
+    validate_ingredient_units(ingredients)
 
     searchable_text = " ".join(
         [recipe.get("title") or "", recipe.get("brief_description") or ""]

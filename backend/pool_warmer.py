@@ -13,7 +13,8 @@ import json
 import random
 
 from app.core import db
-from app.services import cloudflare, image_chain, provider_quota
+from app.services import cloudflare, image_chain, provider_quota, recipe_audit
+from app.services.generation_rules import DEFINING_COMPONENTS_RULE, DISH_AUTHENTICITY_RULE
 from app.services.profile import DEFAULT_CUISINES
 from app.services.stub_expansion import expand_stub
 
@@ -28,9 +29,7 @@ EXPANSION_QUOTA_THRESHOLD_PERCENT = 50
 
 SYSTEM_PROMPT = (
     "You invent simple, appealing recipe ideas for a meal-planning app. "
-    "The dish comes first, not the ingredients: every idea must be a REAL, recognizable dish "
-    "that genuinely exists in that cuisine's tradition — never invent an unusual ingredient "
-    "combination or a generic 'fiesta'/'twist'-style mashup just to sound appealing. "
+    f"{DISH_AUTHENTICITY_RULE} {DEFINING_COMPONENTS_RULE} "
     "Respond with ONLY a JSON object: "
     '{"title": "...", "brief_description": "...", "main_protein": "...", "image_prompt": "..."}. '
     "image_prompt should describe the finished plated dish visually (colours, textures, "
@@ -157,12 +156,21 @@ async def run_pool_warmer() -> dict:
 
     expanded, expansion_errors = await _expand_some_stubs(weights)
 
+    # Part C (2026-07-14) — runs last, exactly when new content (this run's
+    # stubs/expansions) exists to check. Never blocks stub creation: if the
+    # audit itself errors, the night's stubs are already committed either way.
+    try:
+        audit = await recipe_audit.run_recipe_audit()
+    except Exception as exc:  # noqa: BLE001 — audit failure shouldn't fail the whole warmer run
+        audit = {"audit_error": str(exc)}
+
     return {
         "requested": STUBS_PER_NIGHT,
         "created": created,
         "errors": errors,
         "expanded": expanded,
         "expansion_errors": expansion_errors,
+        **audit,
     }
 
 

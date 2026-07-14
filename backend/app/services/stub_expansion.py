@@ -1,6 +1,15 @@
 from app.core import db
 from app.services import ai_client, allergens
-from app.services.guardrails import GeneratedRecipeInvalid, validate_ingredient_shape
+from app.services.generation_rules import (
+    DEFINING_COMPONENTS_RULE,
+    INGREDIENT_ITEM_SCHEMA,
+    KCAL_COMPUTATION_RULE,
+)
+from app.services.guardrails import (
+    GeneratedRecipeInvalid,
+    validate_ingredient_shape,
+    validate_ingredient_units,
+)
 
 # Mirrors fresh_generation.py's MAX_GENERATION_ATTEMPTS — same underlying
 # tool-call flakiness risk (a malformed response under load), same "fresh
@@ -18,33 +27,7 @@ EXPANSION_TOOLS = [
                 "properties": {
                     "ingredients": {
                         "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "name": {"type": "string"},
-                                "qty": {"type": "number"},
-                                "unit": {
-                                    "type": "string",
-                                    "description": (
-                                        "Metric only — g, kg, ml, l, tsp, tbsp, or a plain count "
-                                        "(whole, clove, slice, piece, sheet, fillet, leaf, etc). "
-                                        "Never imperial (no lb, oz, pound, inch, cup as a weight "
-                                        "substitute) — a real, recurring failure mode where quantities "
-                                        "silently fail to sum correctly on the shopping list."
-                                    ),
-                                },
-                                "scaling": {
-                                    "type": "string",
-                                    "enum": ["linear", "seasoning", "heat", "fixed"],
-                                },
-                                "tier": {
-                                    "type": "string",
-                                    "enum": ["mandatory", "recommended", "optional"],
-                                },
-                                "allergen_tags": {"type": "array", "items": {"type": "string"}},
-                            },
-                            "required": ["name", "qty", "unit", "scaling", "tier"],
-                        },
+                        "items": INGREDIENT_ITEM_SCHEMA,
                     },
                     "time": {
                         "type": "string",
@@ -52,13 +35,7 @@ EXPANSION_TOOLS = [
                     },
                     "kcal": {
                         "type": "integer",
-                        "description": (
-                            "Total kcal for the WHOLE recipe as written, computed "
-                            "ingredient-by-ingredient from standard nutrition values (USDA or "
-                            "regional equivalent) at the exact qty/unit given — never an "
-                            "impression-based guess. Don't forget oils/fats and dry-vs-cooked "
-                            "weight for pasta/rice."
-                        ),
+                        "description": KCAL_COMPUTATION_RULE,
                     },
                 },
                 "required": ["ingredients", "time", "kcal"],
@@ -74,7 +51,8 @@ async def expand_stub(stub: dict) -> dict:
     defers ALL generation cost until a real user's search actually needs it."""
     system_prompt = (
         "You are completing a recipe stub for a meal-planning app. Given the "
-        "title and description, generate a realistic, well-balanced ingredient list."
+        "title and description, generate a realistic, well-balanced ingredient list. "
+        f"{DEFINING_COMPONENTS_RULE}"
     )
     user_prompt = (
         f"Title: {stub['title']}\n"
@@ -98,6 +76,7 @@ async def expand_stub(stub: dict) -> dict:
                 recipe_id=str(stub["id"]),
             )
             validate_ingredient_shape(result["ingredients"])
+            validate_ingredient_units(result["ingredients"])
             break
         except (GeneratedRecipeInvalid, ai_client.AIProviderExhausted) as exc:
             last_error = exc

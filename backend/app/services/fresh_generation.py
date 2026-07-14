@@ -2,6 +2,11 @@ import uuid
 
 from app.core import db
 from app.services import ai_client, allergens, cloudflare, cost_status, tools
+from app.services.generation_rules import (
+    DEFINING_COMPONENTS_RULE,
+    DISH_AUTHENTICITY_RULE,
+    KCAL_COMPUTATION_RULE,
+)
 from app.services.guardrails import (
     GeneratedRecipeInvalid,
     validate_generated_recipe,
@@ -113,18 +118,14 @@ def _build_system_prompt(
         f"Avoid using {recent_proteins or 'nothing in particular'} as the main protein unless necessary. "
         f"{cuisine_variety_instruction}"
         f"{sibling_instruction}"
-        "The dish comes first, not the ingredients: every recipe must be a REAL, recognizable "
-        "dish that genuinely exists in that cuisine's tradition — never invent an unusual "
-        "ingredient combination just to satisfy variety. If avoiding a recently-used protein "
+        f"{DISH_AUTHENTICITY_RULE} If avoiding a recently-used protein "
         "would force an unrealistic swap into a classic dish (e.g. tofu in a traditional "
         "paella), don't force it — pick a genuinely different real dish instead, not a modified "
         "version of the same one. "
+        f"{DEFINING_COMPONENTS_RULE} "
         f"{comment_instruction}"
         f"{max_time_instruction}"
-        "Compute kcal ingredient-by-ingredient from standard nutrition values (USDA or regional "
-        "equivalent) at the exact qty/unit you write — never guess from a general impression of "
-        "the dish. Count every tablespoon of oil/fat explicitly (easy to under-count), and use the "
-        "correct dry-vs-cooked weight for pasta/rice/grains. Give a real 'time' estimate for the "
+        f"{KCAL_COMPUTATION_RULE} Give a real 'time' estimate for the "
         "whole recipe, not a placeholder. "
         "Call submit_recipe immediately with your answer — no other tools are available."
     )

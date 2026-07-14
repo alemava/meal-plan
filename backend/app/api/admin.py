@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 import pool_warmer
 from app.core import db
 from app.core.security import require_admin, require_internal_secret
-from app.services import cloudflare, cost_status, provider_quota
+from app.services import cloudflare, cost_status, provider_quota, recipe_audit
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -12,6 +12,14 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 async def pool_warm():
     """ADR 4 — triggered nightly by Cloud Scheduler (see pool_warmer.py)."""
     return await pool_warmer.run_pool_warmer()
+
+
+@router.post("/recipe-audit", dependencies=[Depends(require_internal_secret)])
+async def recipe_audit_endpoint():
+    """Part C — on-demand trigger for the same audit run_pool_warmer already
+    piggybacks nightly. Useful right after a manual data fix/backfill,
+    without waiting for the next pool-warm cycle."""
+    return await recipe_audit.run_recipe_audit()
 
 
 @router.get("/cost-status", dependencies=[Depends(require_internal_secret)])
