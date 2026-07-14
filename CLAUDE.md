@@ -45,18 +45,29 @@ a generated UUID with no human-chosen component.
 
 ## Recipe image generation
 
-Model: `@cf/leonardo/phoenix-1.0`  
-Dimensions: `1024 × 512` (2:1, matches CSS `aspect-ratio: 2/1` exactly — no cropping)  
-Response: raw JPEG binary (save directly, no base64 extraction needed)
+Model: `@cf/black-forest-labs/flux-1-schnell` (Phase 4 decision, 2026-07-08 — replaces
+`@cf/leonardo/phoenix-1.0`). Originally intended to match Pollinations' fallback model
+too for style consistency, but Pollinations' live model roster (`image.pollinations.ai/
+models`) turned out to be just `["sana"]`, not Flux — so that cross-provider consistency
+isn't actually achievable; Flux was kept on the Cloudflare side anyway on its own merits.  
+Dimensions: `1024 × 512` (2:1, matches CSS `aspect-ratio: 2/1` exactly)  
+Response: **JSON with base64** (`{"result": {"image": "<base64>"}}`), not raw bytes —
+this model has no width/height parameter at all, so the backend (`app/services/
+cloudflare.py`) centre-crops the decoded image to 2:1 itself, measuring the actual
+returned dimensions at runtime rather than assuming a fixed native size.
 
 ```bash
 curl -s -X POST \
-  "https://api.cloudflare.com/client/v4/accounts/5790e6bb8b193165d6ce7707fc5e8b39/ai/run/@cf/leonardo/phoenix-1.0" \
+  "https://api.cloudflare.com/client/v4/accounts/5790e6bb8b193165d6ce7707fc5e8b39/ai/run/@cf/black-forest-labs/flux-1-schnell" \
   -H "Authorization: Bearer <CLOUDFLARE_API_TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "<visual_prompt>", "width": 1024, "height": 512}' \
-  -o /tmp/<week-id>-<meal-id>.jpg
+  -d '{"prompt": "<visual_prompt>", "steps": 4}' \
+  | python3 -c "import sys,json,base64; open('/tmp/<week-id>-<meal-id>.jpg','wb').write(base64.b64decode(json.load(sys.stdin)['result']['image']))"
 ```
+
+If generating manually (outside the backend's own crop step), open the saved file and
+centre-crop to 2:1 before uploading — don't skip this, the frontend CSS no longer
+crops on its own.
 
 ### Writing the visual prompt
 Do NOT use just the dish title. Read `title`, `ingredients` and `steps`, then describe

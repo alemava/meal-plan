@@ -1,0 +1,24 @@
+# Copy to ~/.dbt/profiles.yml (dbt does not read this from the project dir).
+# Same dev/prod split as the FastAPI backend — switch target: to change project.
+
+mesa:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('SUPABASE_DB_HOST_DEV') }}"
+      port: 5432
+      user: "{{ env_var('SUPABASE_DB_USER_DEV') }}"
+      password: "{{ env_var('SUPABASE_DB_PASSWORD_DEV') }}"
+      dbname: postgres
+      schema: public
+      threads: 4
+    prod:
+      type: postgres
+      host: "{{ env_var('SUPABASE_DB_HOST_PROD') }}"
+      port: 5432
+      user: "{{ env_var('SUPABASE_DB_USER_PROD') }}"
+      password: "{{ env_var('SUPABASE_DB_PASSWORD_PROD') }}"
+      dbname: postgres
+      schema: public
+      threads: 4

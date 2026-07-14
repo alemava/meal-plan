@@ -142,8 +142,18 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .wnb.shop-tab.on .shop-count{background:#fff;color:var(--grn)}
 .wnb.special-tab{background:var(--wht);color:#8a5a1e;border-color:#e8d9bf}
 .wnb.special-tab.on{background:#8a5a1e;color:#fff;border-color:#8a5a1e}
+.wnb.gen-tab{background:var(--wht);color:var(--acc);border-color:var(--acb)}
+.wnb.gen-tab.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.gen-form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:16px 0 20px}
+.gen-form label{display:flex;flex-direction:column;gap:4px;font-size:.74rem;font-weight:600;color:var(--mut)}
+.gen-form select{padding:9px 10px;border-radius:10px;border:1px solid var(--brd2);background:var(--wht);font-size:.86rem;color:var(--txt)}
+.gen-go{background:var(--acc);color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:.86rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;height:38px}
+.gen-go:hover{background:var(--acd)}
 .day-count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--acc);color:#fff;font-size:.6rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;margin-left:4px}
 .wnb.on .day-count{background:var(--bg);color:var(--txt)}
+/* Fixed width so day pills stay the same size whether or not they have a
+   count badge — otherwise pills with >1 recipe were visibly wider. */
+.wnb.day-tab{min-width:58px;text-align:center}
 
 /* Day overview */
 .day-h{font-size:1.3rem;font-weight:700;letter-spacing:-0.01em;color:var(--txt);margin-bottom:2px}
@@ -538,6 +548,43 @@ var ANON = _prod ? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 var sb = supabase.createClient(SB, ANON);
 var currentAccessToken = null; // updated by onAuthStateChange; null = not logged in
 
+// ── mesa AI backend (Phase 4) ────────────────────────────────────
+// Dev-only for now — there is no prod Cloud Run deploy yet, so the
+// "Generate with AI" feature is hidden entirely on the prod hostname rather
+// than risk pointing production traffic at the dev backend/dev Supabase JWT.
+var BACKEND = _prod ? null : "https://mesa-backend-904247737916.europe-west2.run.app";
+
+async function apiFetch(path, opts) {
+  opts = opts || {};
+  // Unlike sbFetch (8s, simple Supabase REST reads), generate-recipes can
+  // legitimately take a while (multiple slots, each up to 2 AI-generated
+  // options) — 90s gives real generation room while still turning a truly
+  // hung connection into a clear error instead of an infinite spinner (a
+  // real bug hit live: no timeout here meant a stuck fetch left the UI
+  // loading forever with nothing in the network/server logs to show for it).
+  var ctrl = new AbortController();
+  var tid = setTimeout(function() { ctrl.abort(); }, 90000);
+  var r;
+  try {
+    r = await fetch(BACKEND + path, {
+      method: opts.method || 'GET',
+      headers: Object.assign({'Content-Type':'application/json','Authorization':'Bearer '+currentAccessToken}, opts.headers || {}),
+      body: opts.body,
+      signal: ctrl.signal
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Request timed out — please try again.');
+    throw e;
+  } finally {
+    clearTimeout(tid);
+  }
+  if (!r.ok) {
+    var detail = await r.json().catch(function(){ return null; });
+    throw new Error((detail && detail.detail) || (r.status + ' ' + r.statusText));
+  }
+  return r.json();
+}
+
 function authHeaders(extra) {
   var h = {"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+(currentAccessToken || ANON)};
   return extra ? Object.assign({}, h, extra) : h;
@@ -644,6 +691,16 @@ window.addEventListener('resize', function() {
 // ── Utilities ────────────────────────────────────────────────────
 function ingKey(name) {
   return name.replace(/[^a-z0-9]/gi, '').toLowerCase();
+}
+
+// ing.qty is always a bare number and ing.unit a separate string (both the
+// AI backend and the original seed data agree on this shape) — a real bug
+// found live: every ingredient-quantity display in this file rendered only
+// ing.qty, never ing.unit, so users saw "1 wine" / "4 broth" instead of
+// "1 cup wine" / "4 cups broth". This is the one place that combines them.
+function fmtQtyUnit(ing) {
+  if (ing.qty == null) return '';
+  return ing.qty + (ing.unit ? ' ' + ing.unit : '');
 }
 
 function fmtTime(secs) {
@@ -1400,16 +1457,47 @@ async function startTour() {
   tourDriver.drive();
 }
 
+// Latest week_start this user has anything for (falls back to this real
+// week if they have nothing at all) — "+ Plan next week" advances past
+// this, not past today's real date, so it always lands on a genuinely new,
+// not-yet-planned week regardless of how far ahead testing has already gone.
+function _latestKnownWeekStart() {
+  var weeks = G.weeks || [];
+  if (!weeks.length) return thisWeekMonday();
+  var latest = weeks[0].week_start;
+  weeks.forEach(function(w) { if (w.week_start > latest) latest = w.week_start; });
+  return latest;
+}
+
 function renderWeekCarousel(shown, thisMonday) {
   var nav = document.getElementById('wknav');
   if (!nav) return;
-  if (shown.length <= 1) { nav.style.display = 'none'; return; }
+  // Testing-only affordance: meal_weeks only gets a row on first selection,
+  // so a not-yet-started future week has no tab at all — this button lets
+  // the user start one without waiting for the real week-planning flow.
+  // Always past the latest week they have anything for, so it's always a
+  // genuinely new week — no need to check for an existing tab first.
+  var planBtn = '<button class="wktab" onclick="planNextWeek()">+ Plan next week</button>';
+
+  if (shown.length <= 1 && !planBtn) { nav.style.display = 'none'; return; }
   nav.style.display = 'flex';
   nav.innerHTML = shown.map(function(w) {
     var isCur = weekRelative(w.week_start, thisMonday) === 'current';
     var lbl   = fmtWeekRange(w.week_start);
     return '<button class="wktab' + (isCur ? ' on' : '') + '" id="wktab-' + esc(w.id) + '" onclick="switchWeek(\'' + esc(w.id) + '\')">' + lbl + '</button>';
-  }).join('');
+  }).join('') + planBtn;
+}
+
+function planNextWeek() {
+  Object.keys(G.timers).forEach(stopTimer);
+  G.timers = {};
+  // No meal_weeks row exists yet — id stays null until the first
+  // generate-recipes call returns the real, deterministic week_id (see
+  // runGenerateRecipes syncing it back onto G.week).
+  G.week = {id: null, week_start: _addDaysToDateStr(_latestKnownWeekStart(), 7), meals: []};
+  G.isPast = false;
+  G.genRows = [{day: 'mon', meal: 'dinner'}];
+  showGenerateView();
 }
 
 async function switchWeek(id) {
@@ -1479,6 +1567,9 @@ function mealTabLabel(m) {
 
 // Shared day ordering used by both nav rendering and overview lookups
 var DAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+var _DAY_CODE = {Monday:'mon',Tuesday:'tue',Wednesday:'wed',Thursday:'thu',Friday:'fri',Saturday:'sat',Sunday:'sun'};
+var _CODE_TO_DAY = {};
+DAY_ORDER.forEach(function(d) { _CODE_TO_DAY[_DAY_CODE[d]] = d; });
 
 function renderDayNav(week) {
   var nav   = document.getElementById('wnav');
@@ -1487,6 +1578,9 @@ function renderDayNav(week) {
   var specials = meals.filter(function(m) { return m.meal_type === 'special'; });
 
   var html = '';
+  if (!G.isPast && BACKEND) {
+    html += '<button class="wnb gen-tab" id="wnb-gen" onclick="showGenerateView()">✨ Generate</button>';
+  }
   if (!G.isPast) {
     var tobuyCount = buildShopBuckets(meals, G.shopState).tobuy.length;
     html += '<button class="wnb shop-tab" id="wnb-shop" data-tour="shopping-tab" onclick="showShop()">🛒 Shopping<span class="shop-count">' + tobuyCount + '</span></button>';
@@ -1497,7 +1591,7 @@ function renderDayNav(week) {
     var dayMeals = regular.filter(function(m) { return m.label === dayLabel; });
     if (!dayMeals.length) return;
     var countBadge = dayMeals.length > 1 ? '<span class="day-count">' + dayMeals.length + '</span>' : '';
-    html += '<button class="wnb" id="wnb-day-' + esc(dayLabel) + '" onclick="showDayOverview(\'' + esc(dayLabel) + '\')">'
+    html += '<button class="wnb day-tab" id="wnb-day-' + esc(dayLabel) + '" onclick="showDayOverview(\'' + esc(dayLabel) + '\')">'
       + _SHORT_DAY[dayLabel] + countBadge + '</button>';
   });
 
@@ -1533,6 +1627,192 @@ function goToDayOrFirstSpecial(dayLabel) {
   var firstSpecial = (G.week.meals || []).find(function(m) { return m.meal_type === 'special'; });
   if (firstSpecial) showDay(firstSpecial.id);
   else setMain('<div class="empty">No meals this week.</div>');
+}
+
+// ── Generate with AI (Phase 4 backend) ────────────────────────────
+// Two-step flow: generate-recipes returns two candidate options for a
+// day+meal slot (one from the shared pool, one freshly written), then
+// select-recipe commits whichever the user picks into the CURRENTLY VIEWED
+// week (G.week.id/week_start) — deliberately ignoring whatever week_id the
+// generate step invented internally, since that's just a scratch identifier
+// for the two-option round trip, not where the pick should actually land.
+var GEN_MEAL_TYPES = ['breakfast', 'lunch', 'dinner'];
+var GEN_MEAL_LABELS = {breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner'};
+
+function showGenerateView() {
+  setNavActive('gen');
+  // Testing-only affordance, not the final multi-meal request flow: ask for
+  // N of each meal type (not tied to specific days yet — the backend's
+  // "day" field doesn't affect generation, only where a pick eventually
+  // lands), pool every option by meal type, and assign days afterward on
+  // this same screen. Counts/results persist in G so navigating away
+  // (e.g. into a picked recipe) and back doesn't lose everything.
+  if (!G.genCounts) G.genCounts = {breakfast: 0, lunch: 0, dinner: 2};
+  if (!G.genComments) G.genComments = {breakfast: '', lunch: '', dinner: ''};
+  if (!G.genMaxTime) G.genMaxTime = {breakfast: 10, lunch: 30, dinner: 45};
+  if (!G.genPeople) G.genPeople = 2;
+  if (!G.genAssignments) G.genAssignments = {};
+  renderGenerateForm();
+}
+
+function renderGenerateForm() {
+  var rows = GEN_MEAL_TYPES.map(function(mt) {
+    return '<div class="gen-form">'
+      + '<label>' + GEN_MEAL_LABELS[mt] + '<input type="number" min="0" max="7" value="' + G.genCounts[mt]
+      +   '" oninput="G.genCounts[\'' + mt + '\']=parseInt(this.value)||0" style="width:56px"></label>'
+      + '<label>Max time (min)<input type="number" min="5" max="180" step="5" value="' + G.genMaxTime[mt]
+      +   '" oninput="G.genMaxTime[\'' + mt + '\']=parseInt(this.value)||null" style="width:64px"></label>'
+      + '<label>Craving/note (optional)<input type="text" maxlength="200" placeholder="e.g. something spicy" value="' + esc(G.genComments[mt])
+      +   '" oninput="G.genComments[\'' + mt + '\']=this.value" style="width:220px"></label>'
+      + '</div>';
+  }).join('');
+
+  var html = '<div class="gen-view">'
+    + '<div class="day-h">✨ Generate meals with AI</div>'
+    + '<div class="day-sub">How many of each meal do you want this batch? mesa suggests two options for each — pick which recipe goes on which day below, all on this screen.</div>'
+    + '<div class="gen-form"><label>People eating<input type="number" min="1" max="12" value="' + G.genPeople
+    +   '" oninput="G.genPeople=parseInt(this.value)||2" style="width:56px"></label></div>'
+    + rows
+    + '<button class="gen-go" onclick="runGenerateRecipes()">Generate options</button>'
+    + '<div id="gen-results"></div>'
+    + '</div>';
+  setMain(html);
+  renderGenerateResults(); // restore whatever was already generated this session, if anything
+}
+
+async function runGenerateRecipes() {
+  var resultsEl = document.getElementById('gen-results');
+  resultsEl.innerHTML = '<div class="loader"><div class="spin"></div><span>Thinking of something good…</span></div>';
+
+  var dayCodes = ['mon','tue','wed','thu','fri','sat','sun'];
+  var slots = [];
+  GEN_MEAL_TYPES.forEach(function(mt) {
+    var comment = (G.genComments[mt] || '').trim() || undefined;
+    var maxTime = G.genMaxTime[mt] || undefined;
+    for (var i = 0; i < (G.genCounts[mt] || 0); i++) {
+      // Placeholder day, cycling through the week — the backend doesn't use
+      // it for generation (only meal_type/cuisine/history matter there), and
+      // the frontend ignores it too: options are pooled by meal_type below,
+      // real day assignment happens from the day-pick buttons on each card.
+      // Comment/max_time are shared by every slot of this meal type in the
+      // batch — the backend re-checks the comment against DANGEROUS_TERMS
+      // regardless.
+      slots.push({day: dayCodes[i % 7], meal_type: mt, comment: comment, max_time_minutes: maxTime});
+    }
+  });
+  if (!slots.length) {
+    resultsEl.innerHTML = '<div class="empty">Set at least one meal count above.</div>';
+    return;
+  }
+
+  try {
+    var data = await apiFetch('/api/generate-recipes', {method:'POST', body: JSON.stringify({
+      week_start: G.week.week_start,
+      slots: slots
+    })});
+    // Syncs a not-yet-existing week's real id back onto G.week (see
+    // planNextWeek) — meal_weeks only gets a row on the first selection, so
+    // before that G.week.id is null and this is the only way to learn it.
+    if (data.week_id) G.week.id = data.week_id;
+
+    var pooled = {};
+    (data.slots || []).forEach(function(slot) {
+      if (!pooled[slot.meal_type]) pooled[slot.meal_type] = [];
+      (slot.options || []).forEach(function(opt) { pooled[slot.meal_type].push(opt); });
+    });
+    G.genResults = pooled;
+    G.genAssignments = {};
+    renderGenerateResults();
+  } catch(e) {
+    resultsEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + e.message + '</div>';
+  }
+}
+
+function renderGenerateResults() {
+  var resultsEl = document.getElementById('gen-results');
+  if (!resultsEl || !G.genResults) return;
+
+  var dayButtons = function(opt, mealType) {
+    return DAY_ORDER.map(function(d) {
+      var code = _DAY_CODE[d];
+      var on = G.genAssignments[opt.id] === code;
+      return '<button onclick="event.stopPropagation();assignOptionToDay(\'' + esc(opt.id) + '\',\'' + code + '\',\'' + mealType + '\')" style="'
+        + (on ? 'background:var(--acc);color:#fff;' : 'background:var(--srf);color:var(--txt);')
+        + 'border:none;border-radius:6px;padding:4px 7px;margin:2px 2px 0 0;font-size:.7rem;font-weight:600;cursor:pointer">'
+        + d.slice(0,2) + '</button>';
+    }).join('');
+  };
+
+  var sections = GEN_MEAL_TYPES.map(function(mt) {
+    var opts = G.genResults[mt];
+    if (!opts || !opts.length) return '';
+    var cards = opts.map(function(opt) {
+      var img = opt.image_url
+        ? '<img class="meal-card-img" src="' + esc(opt.image_url) + '" alt="" loading="lazy">'
+        : '<div class="meal-card-ph" style="background:var(--srf)">🍽</div>';
+      var estMeta = [];
+      if (opt.time) estMeta.push('⏱ ' + esc(opt.time));
+      if (opt.kcal) estMeta.push('🔥 ' + esc(opt.kcal) + ' kcal');
+      var assignedDay = G.genAssignments[opt.id];
+      return '<div class="meal-card gen-opt">'
+        + img
+        + '<div class="meal-card-body">'
+        + '<div class="meal-card-type">' + (opt.status === 'complete' ? 'From your recipe pool' : 'New idea') + '</div>'
+        + '<div class="meal-card-ttl">' + esc(opt.title) + '</div>'
+        + '<div class="meal-card-meta">' + esc(opt.brief_description) + '</div>'
+        + (estMeta.length ? '<div class="meal-card-meta">' + estMeta.join(' · ') + '</div>' : '')
+        + '<div style="margin-top:8px">' + dayButtons(opt, mt) + '</div>'
+        + (assignedDay ? '<div class="meal-card-meta" style="color:var(--acc);font-weight:600;margin-top:4px">Added to ' + esc(_CODE_TO_DAY[assignedDay]) + ' ✓</div>' : '')
+        + '</div></div>';
+    }).join('');
+    return '<div class="gen-slot-h" style="font-weight:700;margin:14px 0 8px">' + GEN_MEAL_LABELS[mt] + '</div>' + cards;
+  }).join('');
+
+  resultsEl.innerHTML = sections || '<div class="empty">No options came back — try again.</div>';
+}
+
+async function assignOptionToDay(recipeId, day, mealType) {
+  try {
+    var targetServes = G.genPeople || undefined;
+    var result = await apiFetch('/api/select-recipe', {method:'POST', body: JSON.stringify({
+      week_id: G.week.id,
+      week_start: G.week.week_start,
+      day: day,
+      meal_type: mealType,
+      recipe_id: recipeId,
+      target_serves: targetServes
+    })});
+    G.genAssignments[recipeId] = day;
+    renderGenerateResults();
+    // steps_ready=false means it's in the week already, but its step-by-step
+    // instructions are still being generated in the background — the day
+    // view itself already shows a "chef is preparing" placeholder for that,
+    // so no extra UI needed here beyond the normal "Added ✓" confirmation.
+
+    // Mirror what select-recipe just wrote server-side into G.week.meals
+    // in-memory, then re-hydrate + refresh just the day-nav pills — a real
+    // bug found live: without this, a newly-assigned day never showed up in
+    // the day-nav bar until a full manual reload, since assigning a day
+    // deliberately doesn't navigate away/reload the whole week (that would
+    // wipe the other still-pending options on this same Generate screen).
+    var entryId = day + '-' + mealType;
+    G.week.meals = (G.week.meals || []).filter(function(m) { return m.id !== entryId; });
+    G.week.meals.push({
+      id: entryId,
+      label: _CODE_TO_DAY[day],
+      recipe_id: recipeId,
+      people: targetServes || null,
+      meal_type: mealType,
+      avail: [],
+      remaining: [],
+      time: result.time,
+      kcal: result.kcal,
+    });
+    await hydrateMeals([G.week]);
+    renderDayNav(G.week);
+  } catch(e) {
+    alert('Couldn\'t save that pick: ' + e.message);
+  }
 }
 
 function setNavActive(id) {
@@ -1676,7 +1956,7 @@ function renderRecipe(meal) {
         ingHtml += '<li style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--brd);font-size:.87rem;font-weight:500;color:var(--txt)">'
           + '<span style="color:var(--mut);flex-shrink:0">•</span>'
           + '<span>' + esc(ing.name)
-          + (ing.qty ? ' <span style="font-weight:400;color:var(--mut)">' + esc(ing.qty) + '</span>' : '')
+          + (ing.qty ? ' <span style="font-weight:400;color:var(--mut)">' + esc(fmtQtyUnit(ing)) + '</span>' : '')
           + '</span></li>';
       });
       ingHtml += '</ul>';
@@ -1689,7 +1969,7 @@ function renderRecipe(meal) {
         ingHtml += '<li class="plain-item' + (ticked ? ' ticked' : '') + '" onclick="togglePastIng(\'' + esc(k) + '\')">'
           + '<span class="plain-chk">' + (ticked ? '✓' : '') + '</span>'
           + '<span class="plain-name">' + esc(ing.name)
-          + (ing.qty ? ' <span style="font-weight:400;color:var(--mut)">' + esc(ing.qty) + '</span>' : '')
+          + (ing.qty ? ' <span style="font-weight:400;color:var(--mut)">' + esc(fmtQtyUnit(ing)) + '</span>' : '')
           + '</span></li>';
       });
       ingHtml += '</ul>';
@@ -1710,7 +1990,7 @@ function renderRecipe(meal) {
         ingHtml += '<li class="ii ' + cls + '">';
         ingHtml += '<span class="ico">' + icon + '</span>';
         ingHtml += '<span>' + esc(ing.name)
-          + (ing.qty ? ' <span class="itag" style="background:none;color:var(--mut);font-weight:400;padding:0">' + esc(ing.qty) + '</span>' : '')
+          + (ing.qty ? ' <span class="itag" style="background:none;color:var(--mut);font-weight:400;padding:0">' + esc(fmtQtyUnit(ing)) + '</span>' : '')
           + '<span class="itag ' + tagCls + '"> ' + tagTxt + '</span></span>';
         ingHtml += '</li>';
       });
@@ -1723,7 +2003,11 @@ function renderRecipe(meal) {
 
   // ── right column: steps ──────────────────────────────────────
   var stepsHtml = '';
-  if (meal.steps && meal.steps.length) {
+  if (!meal.steps || !meal.steps.length) {
+    stepsHtml += '<section style="margin-top:14px;margin-bottom:0">';
+    stepsHtml += '<div class="empty">The chef is preparing this recipe — check back in a few minutes, we\'ll let you know when it\'s ready!</div>';
+    stepsHtml += '</section>';
+  } else if (meal.steps && meal.steps.length) {
     stepsHtml += '<section style="margin-top:14px;margin-bottom:0">';
     stepsHtml += '<div class="slbl acc">Steps</div>';
     stepsHtml += '<div class="steps">';
@@ -2184,22 +2468,19 @@ function disconnectTimerObserver(key) {
 }
 
 // ── Shopping list helpers ────────────────────────────────────────
-function parseQty(q) {
-  // parse "200g", "2 tbsp", "1.5 cups" → {num, unit} or null
-  var m = String(q || '').trim().match(/^(\d+(?:[.,]\d+)?)\s*(\S+)?$/);
-  if (!m) return null;
-  return { num: parseFloat(m[1].replace(',', '.')), unit: (m[2] || '').toLowerCase() };
-}
+// qtys is an array of {qty: number, unit: string} — ing.qty/ing.unit are
+// always already separate (both the AI backend and seed data agree), so no
+// string parsing is needed here (a stale parseQty() that expected a
+// combined "200g"-style string was removed — that format never actually
+// existed in this app's real data).
 function sumQtys(qtys) {
-  // returns "500g" if all qtys share the same unit, otherwise null
+  // returns "3 cups" if all qtys share the same unit, otherwise null
   if (!qtys || qtys.length < 2) return null;
-  var parsed = qtys.map(parseQty);
-  if (parsed.some(function(p) { return !p; })) return null;
-  var unit = parsed[0].unit;
-  if (!parsed.every(function(p) { return p.unit === unit; })) return null;
-  var total = parsed.reduce(function(acc, p) { return acc + p.num; }, 0);
+  var unit = qtys[0].unit;
+  if (!qtys.every(function(q) { return q.unit === unit; })) return null;
+  var total = qtys.reduce(function(acc, q) { return acc + (parseFloat(q.qty) || 0); }, 0);
   var t = Math.round(total * 100) / 100;
-  return (Number.isInteger(t) ? String(t) : t.toString()) + (unit || '');
+  return (Number.isInteger(t) ? String(t) : t.toString()) + (unit ? ' ' + unit : '');
 }
 
 // ── Shopping list ────────────────────────────────────────────────
@@ -2219,9 +2500,10 @@ function buildShopBuckets(meals, shopState) {
       var k = ingKey(ing.name);
       if (!map[k]) map[k] = {name: ing.name, meals: [], avail: ing.avail, needsBuying: !ing.avail, qtys: [], buyQtys: [], availQtys: []};
       if (map[k].meals.indexOf(meal.label) === -1) map[k].meals.push(meal.label);
-      if (ing.avail) { map[k].avail = true; if (ing.qty) map[k].availQtys.push(ing.qty); }
-      if (!ing.avail) { map[k].needsBuying = true; if (ing.qty) map[k].buyQtys.push(ing.qty); }
-      if (ing.qty) map[k].qtys.push(ing.qty);
+      var qtyObj = (ing.qty != null) ? {qty: ing.qty, unit: ing.unit || ''} : null;
+      if (ing.avail) { map[k].avail = true; if (qtyObj) map[k].availQtys.push(qtyObj); }
+      if (!ing.avail) { map[k].needsBuying = true; if (qtyObj) map[k].buyQtys.push(qtyObj); }
+      if (qtyObj) map[k].qtys.push(qtyObj);
     });
   });
 
@@ -2262,11 +2544,12 @@ function renderShopList(week) {
       var onclick = clickable ? ' onclick="toggleShopItem(\'' + esc(entry.key) + '\')"' : '';
       var qtys = (qtysField && entry.item[qtysField] && entry.item[qtysField].length ? entry.item[qtysField] : null) || entry.item.qtys || [];
       var qtyHtml = '';
+      var fmtQ = function(q) { return q.qty + (q.unit ? ' ' + q.unit : ''); };
       if (qtys.length === 1) {
-        qtyHtml = ' <span class="sn-qty-line">' + esc(qtys[0]) + '</span>';
+        qtyHtml = ' <span class="sn-qty-line">' + esc(fmtQ(qtys[0])) + '</span>';
       } else if (qtys.length > 1) {
         var total   = sumQtys(qtys);
-        var detail  = qtys.length + ' recipes: ' + qtys.map(esc).join(' + ');
+        var detail  = qtys.length + ' recipes: ' + qtys.map(function(q) { return esc(fmtQ(q)); }).join(' + ');
         qtyHtml = ' <span class="sn-qty-line">'
           + (total ? '<b>' + esc(total) + '</b> · ' : '')
           + detail + '</span>';
@@ -2492,7 +2775,7 @@ function renderLib() {
           html += '<li style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--brd);font-size:.87rem;font-weight:500;color:var(--txt)">'
             + '<span style="color:var(--mut);flex-shrink:0">•</span>'
             + '<span>' + esc(ing.name)
-            + (ing.qty ? ' <span style="font-weight:400;color:var(--mut)">' + esc(ing.qty) + '</span>' : '')
+            + (ing.qty ? ' <span style="font-weight:400;color:var(--mut)">' + esc(fmtQtyUnit(ing)) + '</span>' : '')
             + '</span></li>';
         });
         html += '</ul></div>';

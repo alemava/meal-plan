@@ -2,3 +2,13 @@
 CONTEXT.md
 meal_plan_viewer.html
 .DS_Store
+
+# backend (Python)
+backend/venv/
+backend/venv-mcp/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.env
+backend/dbt/mesa_dbt/target/
+backend/dbt/mesa_dbt/dbt_packages/
+backend/dbt/mesa_dbt/logs/

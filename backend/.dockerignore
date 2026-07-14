@@ -1,0 +1,9 @@
+venv/
+venv-mcp/
+__pycache__/
+**/__pycache__/
+.env
+dbt/
+requirements-dev.txt
+requirements-mcp.txt
+mcp_server.py

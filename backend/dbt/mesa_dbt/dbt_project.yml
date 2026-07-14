@@ -1,0 +1,14 @@
+name: "mesa_dbt"
+version: "1.0.0"
+config-version: 2
+
+profile: "mesa"
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+models:
+  mesa_dbt:
+    # user_segments model lands here in Phase 8 — scaffolding only for now
