@@ -12,3 +12,4 @@ backend/.env
 backend/dbt/mesa_dbt/target/
 backend/dbt/mesa_dbt/dbt_packages/
 backend/dbt/mesa_dbt/logs/
+backend/benchmarks/results/raw/
