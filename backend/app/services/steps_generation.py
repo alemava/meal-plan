@@ -148,7 +148,7 @@ STEPS_TOOLS = [
 ]
 
 
-async def generate_steps(recipe: dict) -> list[dict]:
+async def generate_steps(recipe: dict) -> tuple[list[dict], str]:
     ingredient_names = ", ".join(i["name"] for i in recipe["ingredients"])
     system_prompt = (
         "You are writing detailed, professional-quality cooking steps for a meal-planning app. "
@@ -186,7 +186,7 @@ async def generate_steps(recipe: dict) -> list[dict]:
         "Generate the cooking steps for this recipe."
     )
 
-    result, _provider = await ai_client.run_tool_use_loop(
+    result, provider = await ai_client.run_tool_use_loop(
         system_prompt,
         user_prompt,
         STEPS_TOOLS,
@@ -201,4 +201,4 @@ async def generate_steps(recipe: dict) -> list[dict]:
     for step in steps:
         step["text"] = sanitize_step_text(step.get("text") or "")
     validate_steps(steps)
-    return steps
+    return steps, provider

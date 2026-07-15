@@ -1,13 +1,23 @@
 """Part of the 2026-07-15 production-readiness investigation — answers "is
-Groq/OpenRouter good enough for prod" from real data, not impression. Two
-sub-reports that are deliberately never blended into one number:
+Groq/OpenRouter good enough for prod" from real data, not impression.
 
+Two PIPELINE STAGES are tracked separately, not blended, because they're
+answered by different providers under different rules: recipe suggestion
+(ingredients/kcal/etc — Groq first, OpenRouter fallback, via
+ai_client.chat_completion) and steps generation (OpenRouter only, by
+deliberate design — ai_client.openrouter_only_completion). A recipe's
+`source` column reflects who suggested it; a SEPARATE `steps_source` column
+(added the same day as this stage split, 2026-07-15) reflects who wrote its
+steps — these can differ on the same row (e.g. Groq suggests the recipe,
+OpenRouter writes its steps, the normal case), so a finding about broken
+steps must never be attributed to `source`, only to `steps_source`.
+
+Within each stage, two sub-reports that are deliberately never blended into
+one number:
 - reliability (attempt-level: calls, errors, latency) from prompt_audit_log,
   which has captured this data since day one but nothing ever aggregated it.
 - content_quality (recipe-level defect rate) from recipe_audit_findings,
-  joined against recipes.source now that source actually reflects which
-  provider answered (see ai_client.chat_completion's (response, provider)
-  return contract, added the same day this module was).
+  tiered by trustworthiness (deterministic/heuristic/semantic — see below).
 
 Findings are tiered exactly like recipe_audit.py treats them: deterministic
 checks are the same validators that already block generation, so any
@@ -37,9 +47,20 @@ DETERMINISTIC_CHECKS = frozenset(
 HEURISTIC_CHECKS = frozenset({"kcal_implausible", "kcal_out_of_range", "kcal_suspiciously_round"})
 SEMANTIC_CHECKS = frozenset({"missing_defining_ingredient"})
 
-# Only the two providers this comparison is actually about — cloudflare
-# (stubs) and the legacy claude/gemini seed data predate this pipeline and
-# would just be noise in a groq-vs-openrouter report.
+# Orthogonal to the trust tiers above: WHICH pipeline stage a check is about,
+# used only to decide whether a finding attributes to `source` (recipe
+# suggestion) or `steps_source` (steps generation). Both current members are
+# also in DETERMINISTIC_CHECKS — there's no heuristic/semantic check for
+# steps content today, so the steps content-quality report only ever shows
+# deterministic numbers, honestly, rather than forcing empty tiers.
+STEPS_STAGE_CHECKS = frozenset({"steps_not_array", "step_format"})
+
+# Only the providers each comparison is actually about — cloudflare (stubs)
+# and the legacy claude/gemini seed data predate this pipeline and would
+# just be noise in a groq-vs-openrouter report. Steps generation has a tiny
+# amount of real historical groq data too (2 calls, 2026-07-10, before the
+# openrouter-only design was finalized) — kept in COMPARABLE_PROVIDERS so
+# that data isn't silently dropped, not because steps has an ongoing choice.
 COMPARABLE_PROVIDERS = ("groq", "openrouter")
 
 # Semantic check precision, measured by hand this session (2026-07-14): 6
@@ -49,13 +70,14 @@ COMPARABLE_PROVIDERS = ("groq", "openrouter")
 SEMANTIC_CHECK_MEASURED_PRECISION = "~33% (6 spot-checked, 2 confirmed real, 2026-07-14)"
 
 
-async def get_reliability_report(since_days: int = 30) -> list[dict]:
-    """Attempt-level: every prompt_audit_log row IS this data, already
-    captured on every call via ai_client._log_call — just never queried
-    before now. Scoped to recipe-creation calls (generate_recipes,
-    stub_expansion) since steps/translate always use openrouter_only_
-    completion and would just show 100% openrouter, not a real comparison."""
+async def _reliability_report(since_days: int, purposes: list[str]) -> list[dict]:
+    """Shared query shape for both pipeline stages — every prompt_audit_log
+    row already carries latency_ms/tokens_in/tokens_out/error on every call
+    via ai_client._log_call, just never aggregated before this module.
+    purposes are OR'd together (e.g. recipe suggestion spans both
+    generate_recipes and stub_expansion)."""
     since = datetime.now(UTC) - timedelta(days=since_days)
+    patterns = [f"%:{p}" for p in purposes]
     rows = await db.pool().fetch(
         """
         SELECT split_part(model, ':', 1) AS provider,
@@ -66,12 +88,13 @@ async def get_reliability_report(since_days: int = 30) -> list[dict]:
                avg(coalesce(tokens_in, 0) + coalesce(tokens_out, 0)) AS avg_tokens
         FROM prompt_audit_log
         WHERE created_at >= $1
-          AND (model LIKE '%:generate_recipes' OR model LIKE '%:stub_expansion')
-          AND split_part(model, ':', 1) = ANY($2::text[])
+          AND model LIKE ANY($2::text[])
+          AND split_part(model, ':', 1) = ANY($3::text[])
         GROUP BY 1
         ORDER BY 1
         """,
         since,
+        patterns,
         list(COMPARABLE_PROVIDERS),
     )
     return [
@@ -88,10 +111,33 @@ async def get_reliability_report(since_days: int = 30) -> list[dict]:
     ]
 
 
+async def get_reliability_report(since_days: int = 30) -> list[dict]:
+    """Recipe-suggestion stage only (generate_recipes, stub_expansion) —
+    the stage with a real Groq-vs-OpenRouter choice to compare. Steps
+    generation is reported separately by get_steps_reliability_report,
+    since it isn't a comparison (OpenRouter only, by design) but is still
+    worth measuring on its own."""
+    return await _reliability_report(since_days, ["generate_recipes", "stub_expansion"])
+
+
+async def get_steps_reliability_report(since_days: int = 30) -> list[dict]:
+    """Steps-generation stage (select_recipe_steps) — not a comparison
+    (OpenRouter only today, by deliberate design; see ai_client.
+    openrouter_only_completion), but tracked on its own since it was
+    previously invisible in any report: the original reliability report
+    explicitly excluded this purpose. A tiny amount of real historical Groq
+    data exists too (2 calls, 2026-07-10, predating the openrouter-only
+    design being finalized) — surfaced here rather than silently dropped."""
+    return await _reliability_report(since_days, ["select_recipe_steps"])
+
+
 async def get_content_quality_report(since_days: int = 30) -> dict:
-    """Recipe-level defect rate by provider, tiered. Only trustworthy for
-    recipes created after the source-attribution fix (2026-07-15) — older
-    rows were best-effort backfilled from prompt_audit_log, not guaranteed."""
+    """Recipe-suggestion stage only (ingredients/kcal), tiered. Excludes
+    STEPS_STAGE_CHECKS — those attribute to steps_source, not source, and
+    are reported separately by get_steps_content_quality_report. Only
+    trustworthy for recipes created after the source-attribution fix
+    (2026-07-15) — older rows were best-effort backfilled from
+    prompt_audit_log, not guaranteed."""
     since = datetime.now(UTC) - timedelta(days=since_days)
 
     recipe_counts = await db.pool().fetch(
@@ -118,10 +164,12 @@ async def get_content_quality_report(since_days: int = 30) -> dict:
         FROM recipe_audit_findings f
         JOIN recipes r ON r.id = f.recipe_id
         WHERE r.created_at >= $1 AND r.source = ANY($2::text[]) AND f.resolved = false
+          AND NOT (f.check_name = ANY($3::text[]))
         GROUP BY 1, 2
         """,
         since,
         list(COMPARABLE_PROVIDERS),
+        list(STEPS_STAGE_CHECKS),
     )
 
     report: dict = {}
@@ -158,24 +206,81 @@ async def get_content_quality_report(since_days: int = 30) -> dict:
     return report
 
 
+async def get_steps_content_quality_report(since_days: int = 30) -> dict:
+    """Steps-generation stage only — the mirror of get_content_quality_
+    report, joined against steps_source instead of source. Only covers
+    STEPS_STAGE_CHECKS (steps_not_array, step_format); there's no heuristic
+    or semantic check for step content today, so this only ever reports a
+    deterministic rate — honest about that rather than forcing empty tiers."""
+    since = datetime.now(UTC) - timedelta(days=since_days)
+
+    recipe_counts = await db.pool().fetch(
+        """
+        SELECT steps_source AS provider, count(*) AS recipe_count
+        FROM recipes
+        WHERE created_at >= $1 AND status = 'complete' AND steps_source = ANY($2::text[])
+        GROUP BY 1
+        """,
+        since,
+        list(COMPARABLE_PROVIDERS),
+    )
+    counts = {r["provider"]: r["recipe_count"] for r in recipe_counts}
+
+    finding_rows = await db.pool().fetch(
+        """
+        SELECT r.steps_source AS provider, count(*) AS finding_count
+        FROM recipe_audit_findings f
+        JOIN recipes r ON r.id = f.recipe_id
+        WHERE r.created_at >= $1 AND r.steps_source = ANY($2::text[]) AND f.resolved = false
+          AND f.check_name = ANY($3::text[])
+        GROUP BY 1
+        """,
+        since,
+        list(COMPARABLE_PROVIDERS),
+        list(STEPS_STAGE_CHECKS),
+    )
+    findings_by_provider = {r["provider"]: r["finding_count"] for r in finding_rows}
+
+    report: dict = {}
+    for provider in COMPARABLE_PROVIDERS:
+        recipe_count = counts.get(provider, 0)
+        defects = findings_by_provider.get(provider, 0)
+        report[provider] = {
+            "recipe_count": recipe_count,
+            "deterministic_defect_rate_pct": (
+                round(100 * defects / recipe_count, 2) if recipe_count else None
+            ),
+        }
+    return report
+
+
 async def get_provider_quality_scorecard(since_days: int = 30) -> dict:
     return {
         "window_days": since_days,
-        "reliability": await get_reliability_report(since_days),
-        "content_quality": await get_content_quality_report(since_days),
+        "recipe_suggestion": {
+            "reliability": await get_reliability_report(since_days),
+            "content_quality": await get_content_quality_report(since_days),
+        },
+        "steps_generation": {
+            "reliability": await get_steps_reliability_report(since_days),
+            "content_quality": await get_steps_content_quality_report(since_days),
+        },
         "caveats": [
-            "recipes.source is only guaranteed-accurate for rows created after 2026-07-15 "
-            "(the provider-attribution fix) — older rows were best-effort backfilled from "
-            "prompt_audit_log and may be wrong for recipes with multiple logged attempts.",
-            f"missing_defining_ingredient (semantic tier) measured precision: "
-            f"{SEMANTIC_CHECK_MEASURED_PRECISION} — do not use its count as a quality gate on "
-            "its own.",
+            "recipes.source/steps_source are only guaranteed-accurate for rows created after "
+            "2026-07-15 (the provider-attribution fixes) — older rows were best-effort "
+            "backfilled from prompt_audit_log (falling back to source itself for legacy rows "
+            "with no logged steps call at all, e.g. the original claude/gemini seed data).",
+            f"missing_defining_ingredient (semantic tier, recipe_suggestion only) measured "
+            f"precision: {SEMANTIC_CHECK_MEASURED_PRECISION} — do not use its count as a "
+            "quality gate on its own.",
             "reliability.error_rate_pct counts every attempt, including ones Groq failing over "
             "to OpenRouter within the same request — it is NOT the same as user-facing failure "
             "rate.",
             "Groq is tried first in chat_completion() and OpenRouter only serves the residual "
-            "cases Groq already failed on — organic traffic here is NOT a matched sample "
-            "between providers. See the paired golden-set test for an unconfounded comparison.",
+            "cases Groq already failed on — organic recipe_suggestion traffic here is NOT a "
+            "matched sample between providers. See the paired golden-set test for an "
+            "unconfounded comparison. steps_generation has no such comparison to confound — "
+            "it's OpenRouter by design, reported for its own sake, not vs. Groq.",
             "content_quality only counts UNRESOLVED findings — a finding fixed by editing the "
             "recipe doesn't count against the provider forever, but this also means the rate "
             "understates total defects ever produced, not just currently-open ones.",

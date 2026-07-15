@@ -44,14 +44,15 @@ async def generate_steps_task(payload: dict):
         # dispatch) — idempotent no-op, not an error worth retrying.
         return {"status": "already_complete"}
 
-    steps = await generate_steps(recipe)
+    steps, steps_provider = await generate_steps(recipe)
 
     claimed = await db.pool().fetchval(
         """
-        UPDATE recipes SET steps = $1::jsonb, status = 'complete'
-        WHERE id = $2 AND status = 'partial' RETURNING id
+        UPDATE recipes SET steps = $1::jsonb, status = 'complete', steps_source = $2
+        WHERE id = $3 AND status = 'partial' RETURNING id
         """,
         steps,
+        steps_provider,
         recipe_id,
     )
     if not claimed:
