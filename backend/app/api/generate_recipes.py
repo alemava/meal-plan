@@ -1,6 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import date
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -27,6 +27,20 @@ router = APIRouter(prefix="/api", tags=["recipes"])
 # result incrementally as it finishes, so a retried job only redoes whatever
 # didn't complete last time instead of the whole batch from scratch.
 OnSlotComplete = Callable[[int, str, str, list[dict]], Awaitable[None]]
+
+
+class JobSlotsIncomplete(Exception):
+    """Raised after a generation pass when one or more slots ended with zero
+    options (both AI providers down AND the pool-fill ladder found nothing
+    safe) or hit an unexpected error. Deliberately propagates to the worker
+    as a real failure — even with Cloud Tasks retrying, a slot that silently
+    stays empty forever is worse than one that keeps getting retried until
+    the pool/providers recover (see internal.py's age-cutoff for the
+    eventual give-up point)."""
+
+    def __init__(self, failures: list[tuple[int, str]]):
+        self.failures = failures
+        super().__init__(f"{len(failures)} slot(s) incomplete: {failures}")
 
 
 @router.post("/generate-recipes", response_model=GenerateRecipesAccepted, status_code=202)
@@ -64,9 +78,21 @@ async def generate_recipes(
     return GenerateRecipesAccepted(job_id=job_id)
 
 
+# Lazy-finalizer horizon: belt-and-braces backstop for the (rare) case the
+# Cloud Tasks queue itself gives up or a task gets purged before the
+# worker's own 20h age-cutoff (internal.py) ever runs — without this, a job
+# stuck in 'pending'/'running' with no further attempts would poll forever
+# with no terminal state. No email here (that's the worker's job, on the
+# common path); this only fires for a user actively looking at a truly
+# ancient job.
+JOB_LAZY_FINALIZE_AGE_HOURS = 24
+
+
 @router.get("/generate-recipes/{job_id}", response_model=GenerationJobStatus)
 async def get_generation_job(job_id: str, user_id: str = Depends(get_current_user_id)):
-    """Exposes partial results while status is 'running' — internal.py already persists each slot as it completes."""
+    """Exposes partial results while status is 'running' or 'failed' —
+    internal.py already persists each slot as it completes, and a job can
+    fail with real partial progress still worth showing."""
     row = await db.pool().fetchrow(
         "SELECT * FROM generation_jobs WHERE id = $1 AND user_id = $2", job_id, user_id
     )
@@ -74,8 +100,20 @@ async def get_generation_job(job_id: str, user_id: str = Depends(get_current_use
         raise HTTPException(status_code=404, detail="Job not found")
 
     job = dict(row)
+    if job["status"] in ("pending", "running"):
+        age_hours = (datetime.now(UTC) - job["created_at"]).total_seconds() / 3600
+        if age_hours > JOB_LAZY_FINALIZE_AGE_HOURS:
+            claimed = await db.pool().fetchrow(
+                "UPDATE generation_jobs SET status = 'failed', "
+                "error = coalesce(error, 'Timed out waiting for available capacity.'), updated_at = now() "
+                "WHERE id = $1 AND status NOT IN ('complete', 'failed') RETURNING *",
+                job_id,
+            )
+            if claimed:
+                job = dict(claimed)
+
     result = None
-    if job["status"] in ("running", "complete") and job.get("result"):
+    if job["status"] in ("running", "complete", "failed") and job.get("result"):
         result = _job_result_to_response(job)
 
     return GenerationJobStatus(job_id=job_id, status=job["status"], result=result, error=job.get("error"))
@@ -84,9 +122,10 @@ async def get_generation_job(job_id: str, user_id: str = Depends(get_current_use
 def _job_result_to_response(job: dict) -> GenerateRecipesResponse:
     """job['result'] is stored as {"<slot_idx>": {day, meal_type, options}} —
     reassemble it into the real response shape, in original slot order.
-    Tolerant of partial results (job still 'running'): only includes slots
-    that have actually finished, skipping ones not in `result` yet, rather
-    than assuming every index is present."""
+    Tolerant of partial results (job still 'running', or 'failed' with
+    whatever finished before the cutoff): only includes slots that actually
+    finished with real options, skipping ones not in `result` yet or that
+    were persisted empty, rather than assuming every index is present."""
     monday = guardrails.normalise_to_monday(job["week_start"])
     week_id = guardrails.week_id_for(monday)
     slots_request = job["slots_request"]
@@ -99,7 +138,7 @@ def _job_result_to_response(job: dict) -> GenerateRecipesResponse:
             options=[RecipeOption(**o) for o in result[str(idx)]["options"]],
         )
         for idx in range(len(slots_request))
-        if str(idx) in result
+        if str(idx) in result and result[str(idx)]["options"]
     ]
     return GenerateRecipesResponse(
         week_id=week_id,
@@ -180,20 +219,35 @@ async def _run_generation(
             groups.setdefault(slot.meal_type, []).append((idx, slot))
 
     slot_options: dict[int, list[dict]] = dict(already_complete)
+    # Appended to (never raised) from inside a group — a slot that comes back
+    # empty or raises must not kill its sibling slots in the same group, and
+    # groups run concurrently via gather below, so this is the single place
+    # failures are collected before deciding what to do about them. Plain
+    # list append is safe with no locking: asyncio's single-threaded event
+    # loop means only one coroutine ever runs between awaits, same reasoning
+    # already relied on for the shared used_recipe_ids/used_cuisines below.
+    failed_slots: list[tuple[int, str]] = []
 
     async def _run_group(slots_with_idx):
         for idx, slot in slots_with_idx:
             comment = guardrails.sanitize_user_comment(slot.comment)
-            options = await _generate_options_for_slot(
-                user_profile,
-                slot.meal_type,
-                batch_history,
-                used_recipe_ids,
-                user_id,
-                comment,
-                slot.max_time_minutes,
-                used_cuisines,
-            )
+            try:
+                options = await _generate_options_for_slot(
+                    user_profile,
+                    slot.meal_type,
+                    batch_history,
+                    used_recipe_ids,
+                    user_id,
+                    comment,
+                    slot.max_time_minutes,
+                    used_cuisines,
+                )
+            except Exception as exc:
+                failed_slots.append((idx, repr(exc)))
+                continue
+            if not options:
+                failed_slots.append((idx, "no options (providers down and pool-fill found nothing safe)"))
+                continue
             used_recipe_ids.update(str(o["id"]) for o in options)
             batch_history.extend(
                 {"title": o["title"], "main_protein": o.get("main_protein")} for o in options
@@ -204,6 +258,9 @@ async def _run_generation(
                 await on_slot_complete(idx, slot.day, slot.meal_type, options)
 
     await asyncio.gather(*(_run_group(group) for group in groups.values()))
+
+    if failed_slots:
+        raise JobSlotsIncomplete(failed_slots)
 
     slots_out = [
         SlotOptions(
@@ -348,6 +405,21 @@ async def _generate_options_for_slot(
     else:
         options = []
 
+    # Degraded-mode fallback: whatever combination of pool/fresh attempts
+    # above landed on fewer than 2 options (both providers down with no pool
+    # match, one fresh call exhausted mid-way, etc.) — top up from the pool
+    # via progressively relaxed constraints rather than leaving the slot
+    # short or empty. A slot ends with 0 options only if the fully-relaxed
+    # pool has nothing allergen/dislike-safe left either.
+    if len(options) < 2:
+        options += await _pool_fill(
+            user_profile,
+            meal_type,
+            exclude_ids | {str(o["id"]) for o in options},
+            used_cuisines,
+            2 - len(options),
+        )
+
     # Image-text sync rule: ONLY freshly-generated options ever get a
     # synchronous, in-request image call — pool matches and expanded stubs
     # already have an image (or are queued and shown with a placeholder) and
@@ -358,6 +430,54 @@ async def _generate_options_for_slot(
 
     await _log_suggestions(user_id, options)
     return options
+
+
+_POOL_FILL_RUNGS: list[dict] = [
+    {},
+    {"relax_suggested": True},
+    {"relax_suggested": True, "min_similarity": 0.55},
+    {"relax_suggested": True, "min_similarity": 0.55, "any_cuisine": True},
+]
+
+
+async def _pool_fill(
+    user_profile: profile.UserProfile,
+    meal_type: str,
+    exclude_ids: set[str],
+    used_cuisines: list[str],
+    needed: int,
+) -> list[dict]:
+    """Degraded-mode fallback when AI generation couldn't fill a slot (both
+    providers exhausted/erroring): walk the pool with progressively relaxed
+    constraints instead of leaving the slot short or empty. Allergen/dislike
+    filters and the 60-day "actually used" exclusion are NEVER relaxed —
+    only the 28-day "recently shown" window, the similarity threshold, and
+    the preferred-cuisine filter loosen, one rung at a time, only as far as
+    needed. include_stubs=False on every rung: a stub needs a live AI call
+    to expand, which is exactly what's unavailable here.
+    """
+    filled: list[dict] = []
+    excluded = set(exclude_ids)
+    cuisines = list(used_cuisines)
+    for rung in _POOL_FILL_RUNGS:
+        if len(filled) >= needed:
+            break
+        while len(filled) < needed:
+            candidate = await pool_search.search_recipe_pool(
+                user_profile,
+                meal_type,
+                excluded,
+                used_cuisines=cuisines,
+                include_stubs=False,
+                **rung,
+            )
+            if not candidate:
+                break
+            filled.append(candidate)
+            excluded.add(str(candidate["id"]))
+            if candidate.get("cuisine"):
+                cuisines.append(candidate["cuisine"])
+    return filled
 
 
 async def _log_suggestions(user_id: str, options: list[dict]) -> None:

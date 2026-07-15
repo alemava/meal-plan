@@ -106,7 +106,12 @@ async def set_provider_status(
 
 @router.post("/reembed")
 async def reembed(_user_id: str = Depends(require_admin)):
-    """Embed every recipe with embedding IS NULL. Run after any bulk import."""
+    """Embed every recipe with embedding IS NULL. Run after any bulk import.
+    Also the manual runbook step for a model swap: null out every recipe's
+    embedding first, THEN call this — it truncates query_embedding_cache
+    (pool_search.py) unconditionally so no stale query-text vector from the
+    old model lingers and gets compared against the new one."""
+    await db.pool().execute("TRUNCATE query_embedding_cache")
     rows = await db.pool().fetch(
         "SELECT id, title, brief_description FROM recipes WHERE embedding IS NULL"
     )

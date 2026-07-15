@@ -98,11 +98,29 @@ async def get_percent_used(provider: str) -> float:
     return 0.0
 
 
+async def is_daily_blocked(provider: str) -> bool:
+    """True if a DAILY-denominated cap (request count or token count) is
+    what's currently blocking this provider, as opposed to a per-minute cap.
+    A daily cap cannot free up within any sane wait window (it resets at
+    midnight UTC), so this lets a capacity-wait skip waiting entirely rather
+    than burn real seconds polling for something that can't happen — a real
+    cost measured live: every Groq call paid an unconditional ~12s tax on a
+    day its 95k-token daily cap was already spent, since the old wait loop
+    only ever polled, with no concept of which cap it was waiting on."""
+    daily_cap = DAILY_CAPS.get(provider)
+    daily_token_cap = DAILY_TOKEN_CAPS.get(provider)
+    if daily_cap is not None and await get_daily_usage(provider) >= daily_cap:
+        return True
+    if daily_token_cap is not None and await get_daily_token_usage(provider) >= daily_token_cap:
+        return True
+    return False
+
+
 async def can_call(provider: str) -> bool:
     """The single check every OpenRouter call site (sync fallback and the
     async steps worker) must pass before attempting a call. Also the check
-    _wait_for_groq_capacity() polls in ai_client.py, so the token-aware
-    minute cap below directly benefits that path too, no separate wiring."""
+    _wait_for_capacity() polls in ai_client.py, so the token-aware minute
+    cap below directly benefits that path too, no separate wiring."""
     daily_cap = DAILY_CAPS.get(provider)
     minute_cap = PER_MINUTE_CAPS.get(provider)
     daily_token_cap = DAILY_TOKEN_CAPS.get(provider)

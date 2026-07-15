@@ -1664,6 +1664,7 @@ function showGenerateView() {
   if (!G.genPeople) G.genPeople = 2;
   if (!G.genAssignments) G.genAssignments = {};
   renderGenerateForm();
+  maybeResumeLastGenJob();
 }
 
 function renderGenerateForm() {
@@ -1729,14 +1730,24 @@ var GEN_POLL_BACKOFF_MS = 15000;   // once in busy mode, no UX reason to keep po
 // checkPendingGenerationJob).
 //
 // The backend returns whatever slots have finished so far even while status
-// is still 'running' (see GET /api/generate-recipes/{job_id}), so this
-// applies `result` on EVERY poll that has one, not just once at the end —
-// recipes appear as the worker actually finds them instead of one
+// is still 'running' or 'failed' (see GET /api/generate-recipes/{job_id}),
+// so this applies `result` on EVERY poll that has one, not just once at the
+// end — recipes appear as the worker actually finds them instead of one
 // all-or-nothing wait at the finish line. shownAny tracks whether anything
 // has rendered yet, so a slow/busy patch never wipes real progress off the
 // screen: once at least one card is showing, later loader/error states only
 // ever add to what's there, never replace it.
-async function pollGenerationJob(jobId, resultsEl) {
+//
+// Takes only jobId, not a captured resultsEl reference — genResultsEl()
+// re-queries the DOM at write time instead, since a poll can outlive the
+// element it started with (user switches tabs mid-poll; renderGenerateForm
+// tears down and rebuilds #gen-results). G.genActiveJobId is the ownership
+// token: checked after every await, so starting a NEW batch (or a resumed
+// job superseding this one) silently kills a stale loop instead of letting
+// two pollers race and interleave writes.
+function genResultsEl() { return document.getElementById('gen-results'); }
+
+async function pollGenerationJob(jobId) {
   var startedAt = Date.now();
   var shownAny = false;
   while (true) {
@@ -1744,9 +1755,15 @@ async function pollGenerationJob(jobId, resultsEl) {
     try {
       status = await apiFetch('/api/generate-recipes/' + jobId);
     } catch (e) {
-      if (!shownAny) resultsEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + esc(e.message) + '</div>';
+      if (G.genActiveJobId !== jobId) return;
+      if (!shownAny) {
+        var errEl = genResultsEl();
+        if (errEl) errEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + esc(e.message) + '</div>';
+      }
       return;
     }
+    if (G.genActiveJobId !== jobId) return;
+
     if (status.result && status.result.slots && status.result.slots.length) {
       applyGenerationResult(status.result);
       shownAny = true;
@@ -1754,50 +1771,98 @@ async function pollGenerationJob(jobId, resultsEl) {
     if (status.status === 'complete') { return; }
     if (status.status === 'failed') {
       var msg = 'Couldn\'t generate right now:\n' + esc(status.error || 'unknown error');
-      if (!shownAny) {
-        resultsEl.innerHTML = '<div class="err-box">' + msg + '</div>';
-      } else {
-        resultsEl.insertAdjacentHTML('beforeend', '<div class="err-box" style="margin-top:10px">Some meals didn\'t finish:\n' + msg + '</div>');
+      var failEl = genResultsEl();
+      if (failEl) {
+        if (!shownAny) {
+          failEl.innerHTML = '<div class="err-box">' + msg + '</div>';
+        } else {
+          failEl.insertAdjacentHTML('beforeend', '<div class="err-box" style="margin-top:10px">Some meals didn\'t finish:\n' + msg + '</div>');
+        }
       }
       return;
     }
     var busy = (Date.now() - startedAt) > GEN_BUSY_THRESHOLD_MS;
     if (busy && !shownAny) {
-      resultsEl.innerHTML = '<div class="loader"><div class="spin"></div><span>The kitchen is busy right now — we\'ll email you when your options are ready. Feel free to close this tab.</span></div>';
+      var busyEl = genResultsEl();
+      if (busyEl) busyEl.innerHTML = '<div class="loader"><div class="spin"></div><span>The kitchen is busy right now — we\'ll email you when your options are ready. Feel free to close this tab.</span></div>';
     }
     await new Promise(function(resolve) { setTimeout(resolve, busy ? GEN_POLL_BACKOFF_MS : GEN_POLL_INTERVAL_MS); });
+    if (G.genActiveJobId !== jobId) return;
   }
 }
 
 // Runs once per fresh login/session (see onAuthStateChange) — if the user
 // arrived via a "your options are ready" email link (captured into
 // localStorage by captureIncomingJobLink before the auth gate could drop
-// the query string), jump straight to the finished results instead of
-// silently landing on whatever week/day they'd normally see first.
+// the query string), jump straight to that job's results instead of
+// silently landing on whatever week/day they'd normally see first. Fetching
+// and rendering the job itself is maybeResumeLastGenJob's job (below) —
+// this only converts the one-shot email link into the same durable
+// last-job record that drives every other resume path, so there's a single
+// owner instead of two competing fetch/poll loops.
 async function checkPendingGenerationJob() {
   var jobId = localStorage.getItem('mesa-pending-job');
   if (!jobId) return;
   localStorage.removeItem('mesa-pending-job');
+  localStorage.setItem('mesa-last-gen-job', JSON.stringify({id: jobId, at: Date.now()}));
   showGenerateView();
-  var resultsEl = document.getElementById('gen-results');
-  resultsEl.innerHTML = '<div class="loader"><div class="spin"></div><span>Loading your recipe options…</span></div>';
+}
+
+// Resurfaces the last generation batch (still running, complete, or failed)
+// whenever the Generate view opens — without this, results only survived a
+// page reload via the email deep-link above; they're already durably
+// persisted server-side the moment each slot finishes, the frontend just
+// never asked again. Never fires over an already-active poll or in-memory
+// results (a brand-new batch via runGenerateRecipes, or the deep-link above,
+// already owns the screen) — G.genActiveJobId is the same ownership token
+// pollGenerationJob checks, so setting it here also prevents a second
+// concurrent poll of the same job.
+var GEN_RESUME_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
+async function maybeResumeLastGenJob() {
+  if (G.genActiveJobId) return;
+  if (G.genResults && Object.keys(G.genResults).length) return;
+  var raw = localStorage.getItem('mesa-last-gen-job');
+  if (!raw) return;
+  var stored;
+  try { stored = JSON.parse(raw); } catch (e) { localStorage.removeItem('mesa-last-gen-job'); return; }
+  if (!stored || !stored.id || (Date.now() - stored.at) > GEN_RESUME_MAX_AGE_MS) return;
+
+  G.genActiveJobId = stored.id;
   try {
-    var status = await apiFetch('/api/generate-recipes/' + jobId);
+    var status = await apiFetch('/api/generate-recipes/' + stored.id);
+    if (G.genActiveJobId !== stored.id) return;
     if (status.status === 'complete') {
       applyGenerationResult(status.result);
     } else if (status.status === 'failed') {
-      resultsEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + esc(status.error || 'unknown error') + '</div>';
+      if (status.result) applyGenerationResult(status.result);
+      var el = genResultsEl();
+      if (el) {
+        el.insertAdjacentHTML('beforeend', '<div class="err-box" style="margin-top:10px">Some meals didn\'t finish:\n' + esc(status.error || 'unknown error') + '</div>');
+      }
     } else {
-      // Rare long-tail case (e.g. still retrying through a quota-exhausted
-      // day) — resume polling rather than leaving a dead loading state.
-      await pollGenerationJob(jobId, resultsEl);
+      // Still running/pending — apply whatever partial result this fetch
+      // already carried instead of discarding it (pollGenerationJob's own
+      // loop would otherwise re-fetch from scratch before showing anything).
+      if (status.result && status.result.slots && status.result.slots.length) {
+        applyGenerationResult(status.result);
+      }
+      await pollGenerationJob(stored.id);
     }
   } catch (e) {
-    resultsEl.innerHTML = '<div class="err-box">Couldn\'t load your recipe options:\n' + esc(e.message) + '</div>';
+    // Job gone (404) or unreachable — nothing to resume, don't leave a
+    // dead reference around for next visit.
+    localStorage.removeItem('mesa-last-gen-job');
+    if (G.genActiveJobId === stored.id) G.genActiveJobId = null;
   }
 }
 
 async function runGenerateRecipes() {
+  // Synchronous, before any await — immediately invalidates any poll/resume
+  // loop still running for a previous job (both check this after every
+  // await and exit silently on mismatch), so a new batch can never get its
+  // results interleaved with a stale one's.
+  G.genActiveJobId = null;
   var resultsEl = document.getElementById('gen-results');
   resultsEl.innerHTML = '<div class="loader"><div class="spin"></div><span>Thinking of something good…</span></div>';
   // Fresh batch starting — reset once here, not inside applyGenerationResult
@@ -1833,7 +1898,12 @@ async function runGenerateRecipes() {
       week_start: G.week.week_start,
       slots: slots
     })});
-    await pollGenerationJob(accepted.job_id, resultsEl);
+    // Never cleared on completion — reopening Generate later re-shows these
+    // results (maybeResumeLastGenJob); superseded by the next batch, the
+    // 48h window, or a 404 if the job record is ever gone.
+    localStorage.setItem('mesa-last-gen-job', JSON.stringify({id: accepted.job_id, at: Date.now()}));
+    G.genActiveJobId = accepted.job_id;
+    await pollGenerationJob(accepted.job_id);
   } catch(e) {
     resultsEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + e.message + '</div>';
   }

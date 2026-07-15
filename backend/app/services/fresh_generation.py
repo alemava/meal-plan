@@ -1,3 +1,5 @@
+import asyncio
+import random
 import uuid
 
 from app.core import db
@@ -168,7 +170,7 @@ async def generate_fresh_option(
     generation_request_id = str(uuid.uuid4())
 
     last_error: Exception | None = None
-    for _ in range(MAX_GENERATION_ATTEMPTS):
+    for attempt in range(MAX_GENERATION_ATTEMPTS):
         try:
             recipe, provider = await ai_client.run_tool_use_loop(
                 system_prompt,
@@ -190,6 +192,12 @@ async def generate_fresh_option(
             # unused. A fresh attempt starts a brand-new conversation, so it
             # isn't carrying forward whatever tripped up the previous one.
             last_error = exc
+            if attempt < MAX_GENERATION_ATTEMPTS - 1:
+                # Real bug hit live: 3 attempts fired back-to-back with no
+                # pause against a provider already congested (a burst of
+                # OpenRouter 429s) just kept re-tripping the same limit.
+                # Skipped on the last attempt — nothing left to wait for.
+                await asyncio.sleep(2 * (attempt + 1) + random.uniform(0, 1))
             continue
 
     raise ai_client.AIProviderExhausted from last_error

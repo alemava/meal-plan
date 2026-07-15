@@ -41,16 +41,20 @@ ASYNC_WORKER_TIMEOUT_SECONDS = 180
 # Real bug hit live: parallelizing slot processing in generate_recipes.py (up
 # to 3 concurrent meal-type groups) let several Groq calls burst in the same
 # instant, tripping Groq's real per-minute token window (429s observed on
-# every call for several minutes straight). Unlike OpenRouter's cutoff (skip
-# straight to the graceful "chef is busy" message — OpenRouter IS the slow
-# fallback already, so a doomed wait there isn't worth it), Groq's window is
-# short and refills almost continuously (verified live: token bucket resets
-# in ~205ms), so a bounded wait for a slot to free up is usually much
-# cheaper than eating OpenRouter's 20-30s congestion tax. This is the queue:
-# calls that would burst past the self-imposed per-minute cap wait their
-# turn instead of either failing outright or firing anyway.
-GROQ_QUEUE_MAX_WAIT_SECONDS = 12
-GROQ_QUEUE_POLL_INTERVAL_SECONDS = 2
+# every call for several minutes straight). A bounded wait for a slot to
+# free up is usually much cheaper than eating a provider's congestion tax
+# outright — this is the queue: calls that would burst past the self-imposed
+# per-minute cap wait their turn instead of either failing outright or
+# firing anyway. Groq's window is short and refills almost continuously
+# (verified live: token bucket resets in ~205ms) — 12s is comfortable.
+# OpenRouter gets a shorter budget: with Groq exhausted for a whole day (a
+# real, observed case — see provider_quota.is_daily_blocked), OpenRouter
+# becomes the de-facto primary for the rest of that day, so a minute-cap
+# block there shouldn't instantly fail the slot either, but it's still the
+# slower/less reliable provider so the wait stays modest.
+CAPACITY_WAIT_POLL_INTERVAL_SECONDS = 2
+GROQ_CAPACITY_MAX_WAIT_SECONDS = 12
+OPENROUTER_CAPACITY_MAX_WAIT_SECONDS = 15
 
 
 class AIProviderExhausted(Exception):
@@ -96,18 +100,25 @@ async def _call_openrouter(
     return resp.json()
 
 
-async def _wait_for_groq_capacity() -> bool:
+async def _wait_for_capacity(provider: str, max_wait_s: float) -> bool:
     """Polls the self-imposed per-minute cap (DB-backed, so it's correct
     across concurrent requests/Cloud Run instances, unlike an in-process-only
-    limiter) rather than failing the instant it's hit. Returns False if the
-    wait budget runs out without capacity freeing up — the caller then falls
-    through to the existing OpenRouter fallback exactly as before."""
+    limiter) rather than failing the instant it's hit. Fast-paths out with NO
+    wait at all when a DAILY cap is the blocker — polling can't help there
+    (see provider_quota.is_daily_blocked's docstring for the real cost this
+    avoids). Returns False if the wait budget runs out (or the daily
+    fast-path fired) without capacity freeing up — the caller then falls
+    through to its next provider exactly as before."""
+    if await provider_quota.can_call(provider):
+        return True
+    if await provider_quota.is_daily_blocked(provider):
+        return False
     waited = 0.0
-    while waited < GROQ_QUEUE_MAX_WAIT_SECONDS:
-        if await provider_quota.can_call("groq"):
+    while waited < max_wait_s:
+        await asyncio.sleep(CAPACITY_WAIT_POLL_INTERVAL_SECONDS)
+        waited += CAPACITY_WAIT_POLL_INTERVAL_SECONDS
+        if await provider_quota.can_call(provider):
             return True
-        await asyncio.sleep(GROQ_QUEUE_POLL_INTERVAL_SECONDS)
-        waited += GROQ_QUEUE_POLL_INTERVAL_SECONDS
     return False
 
 
@@ -158,7 +169,9 @@ async def chat_completion(
     diagnosing it (the golden-set test), so gating them the same way would
     make a disabled provider unmeasurable right when you'd want data on it
     most."""
-    if await provider_status.is_enabled("groq") and await _wait_for_groq_capacity():
+    if await provider_status.is_enabled("groq") and await _wait_for_capacity(
+        "groq", GROQ_CAPACITY_MAX_WAIT_SECONDS
+    ):
         start = time.monotonic()
         try:
             result = await _call_groq(messages, tools)
@@ -182,14 +195,14 @@ async def chat_completion(
     # queue's wait budget ran out without a slot freeing up — either way,
     # fall through to OpenRouter exactly as before.
 
-    if not await provider_status.is_enabled("openrouter") or not await provider_quota.can_call(
-        "openrouter"
+    if not await provider_status.is_enabled("openrouter") or not await _wait_for_capacity(
+        "openrouter", OPENROUTER_CAPACITY_MAX_WAIT_SECONDS
     ):
-        # Manually disabled or self-imposed cutoff already reached — don't
-        # spend a call attempt that's already doomed to fail (or worse,
-        # count against the real limit right as it's being hit). Skip
-        # straight to the graceful exhaustion path the caller already
-        # handles.
+        # Manually disabled, or capacity never freed up within the wait
+        # budget (immediately, if a daily cap is the blocker) — don't spend
+        # a call attempt that's already doomed to fail (or worse, count
+        # against the real limit right as it's being hit). Skip straight to
+        # the graceful exhaustion path the caller already handles.
         raise AIProviderExhausted("openrouter disabled or self-imposed cutoff reached")
 
     start = time.monotonic()
@@ -262,7 +275,7 @@ async def groq_only_completion(
     plus openrouter_only_completion, called on the SAME request matrix, is
     how the comparison becomes fair. Mirrors openrouter_only_completion's
     shape exactly so both plug into run_tool_use_loop's completion_fn."""
-    if not await _wait_for_groq_capacity():
+    if not await _wait_for_capacity("groq", GROQ_CAPACITY_MAX_WAIT_SECONDS):
         raise AIProviderExhausted("groq self-imposed cutoff reached / capacity unavailable")
 
     start = time.monotonic()

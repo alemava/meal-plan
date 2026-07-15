@@ -1,3 +1,6 @@
+import asyncio
+import random
+
 from app.core import db
 from app.services import ai_client, allergens
 from app.services.generation_rules import (
@@ -65,7 +68,7 @@ async def expand_stub(stub: dict) -> dict:
     last_error: Exception | None = None
     result = None
     provider = "openrouter"
-    for _ in range(MAX_EXPANSION_ATTEMPTS):
+    for attempt in range(MAX_EXPANSION_ATTEMPTS):
         try:
             result, provider = await ai_client.run_tool_use_loop(
                 system_prompt,
@@ -82,6 +85,11 @@ async def expand_stub(stub: dict) -> dict:
         except (GeneratedRecipeInvalid, ai_client.AIProviderExhausted) as exc:
             last_error = exc
             result = None
+            # Same fix as fresh_generation.py's identical loop: back-to-back
+            # retries with no pause just re-trip a provider that's already
+            # congested. Skipped on the last attempt — nothing left to wait for.
+            if attempt < MAX_EXPANSION_ATTEMPTS - 1:
+                await asyncio.sleep(2 * (attempt + 1) + random.uniform(0, 1))
             continue
     if result is None:
         raise ai_client.AIProviderExhausted from last_error
