@@ -39,6 +39,9 @@ class GenerateRecipesResponse(BaseModel):
     week_id: str
     week_start: date
     slots: list[SlotOptions]
+    # len(slots) alone is ambiguous while a job is still running (partial results) — these disambiguate it.
+    total_slots: int = 0
+    completed_slots: int = 0
 
 
 class GenerateRecipesAccepted(BaseModel):

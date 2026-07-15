@@ -66,6 +66,7 @@ async def generate_recipes(
 
 @router.get("/generate-recipes/{job_id}", response_model=GenerationJobStatus)
 async def get_generation_job(job_id: str, user_id: str = Depends(get_current_user_id)):
+    """Exposes partial results while status is 'running' — internal.py already persists each slot as it completes."""
     row = await db.pool().fetchrow(
         "SELECT * FROM generation_jobs WHERE id = $1 AND user_id = $2", job_id, user_id
     )
@@ -74,7 +75,7 @@ async def get_generation_job(job_id: str, user_id: str = Depends(get_current_use
 
     job = dict(row)
     result = None
-    if job["status"] == "complete":
+    if job["status"] in ("running", "complete") and job.get("result"):
         result = _job_result_to_response(job)
 
     return GenerationJobStatus(job_id=job_id, status=job["status"], result=result, error=job.get("error"))
@@ -82,7 +83,10 @@ async def get_generation_job(job_id: str, user_id: str = Depends(get_current_use
 
 def _job_result_to_response(job: dict) -> GenerateRecipesResponse:
     """job['result'] is stored as {"<slot_idx>": {day, meal_type, options}} —
-    reassemble it into the real response shape, in original slot order."""
+    reassemble it into the real response shape, in original slot order.
+    Tolerant of partial results (job still 'running'): only includes slots
+    that have actually finished, skipping ones not in `result` yet, rather
+    than assuming every index is present."""
     monday = guardrails.normalise_to_monday(job["week_start"])
     week_id = guardrails.week_id_for(monday)
     slots_request = job["slots_request"]
@@ -95,8 +99,15 @@ def _job_result_to_response(job: dict) -> GenerateRecipesResponse:
             options=[RecipeOption(**o) for o in result[str(idx)]["options"]],
         )
         for idx in range(len(slots_request))
+        if str(idx) in result
     ]
-    return GenerateRecipesResponse(week_id=week_id, week_start=monday, slots=slots)
+    return GenerateRecipesResponse(
+        week_id=week_id,
+        week_start=monday,
+        slots=slots,
+        total_slots=len(slots_request),
+        completed_slots=len(slots),
+    )
 
 
 async def _run_generation(

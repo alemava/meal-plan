@@ -1691,9 +1691,15 @@ function renderGenerateForm() {
   renderGenerateResults(); // restore whatever was already generated this session, if anything
 }
 
-// Applies a completed GenerateRecipesResponse (whether from the immediate
-// poll loop below or from a deep-linked job checked after login) into
-// G.genResults, pooled by meal_type exactly as the old synchronous flow did.
+// Applies a (possibly partial) GenerateRecipesResponse — from the poll loop
+// below, mid-job or at completion, or from a deep-linked job checked after
+// login — into G.genResults, pooled by meal_type exactly as the old
+// synchronous flow did. Deliberately does NOT touch G.genAssignments: this
+// runs repeatedly as more slots finish, and resetting assignments on every
+// partial update would wipe out day-picks the user already made on
+// early-arriving recipes while the rest are still cooking. Callers starting
+// a brand-new generation reset G.genAssignments themselves, up front (see
+// runGenerateRecipes).
 function applyGenerationResult(data) {
   if (data.week_id) G.week.id = data.week_id;
   var pooled = {};
@@ -1702,7 +1708,9 @@ function applyGenerationResult(data) {
     (slot.options || []).forEach(function(opt) { pooled[slot.meal_type].push(opt); });
   });
   G.genResults = pooled;
-  G.genAssignments = {};
+  G.genProgress = (typeof data.completed_slots === 'number' && typeof data.total_slots === 'number')
+    ? {completed: data.completed_slots, total: data.total_slots}
+    : null;
   renderGenerateResults();
 }
 
@@ -1719,23 +1727,42 @@ var GEN_POLL_BACKOFF_MS = 15000;   // once in busy mode, no UX reason to keep po
 // you" copy WITHOUT stopping the poll — closing the tab is safe, the worker
 // keeps going and the eventual email carries a link back in (see
 // checkPendingGenerationJob).
+//
+// The backend returns whatever slots have finished so far even while status
+// is still 'running' (see GET /api/generate-recipes/{job_id}), so this
+// applies `result` on EVERY poll that has one, not just once at the end —
+// recipes appear as the worker actually finds them instead of one
+// all-or-nothing wait at the finish line. shownAny tracks whether anything
+// has rendered yet, so a slow/busy patch never wipes real progress off the
+// screen: once at least one card is showing, later loader/error states only
+// ever add to what's there, never replace it.
 async function pollGenerationJob(jobId, resultsEl) {
   var startedAt = Date.now();
+  var shownAny = false;
   while (true) {
     var status;
     try {
       status = await apiFetch('/api/generate-recipes/' + jobId);
     } catch (e) {
-      resultsEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + esc(e.message) + '</div>';
+      if (!shownAny) resultsEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + esc(e.message) + '</div>';
       return;
     }
-    if (status.status === 'complete') { applyGenerationResult(status.result); return; }
+    if (status.result && status.result.slots && status.result.slots.length) {
+      applyGenerationResult(status.result);
+      shownAny = true;
+    }
+    if (status.status === 'complete') { return; }
     if (status.status === 'failed') {
-      resultsEl.innerHTML = '<div class="err-box">Couldn\'t generate right now:\n' + esc(status.error || 'unknown error') + '</div>';
+      var msg = 'Couldn\'t generate right now:\n' + esc(status.error || 'unknown error');
+      if (!shownAny) {
+        resultsEl.innerHTML = '<div class="err-box">' + msg + '</div>';
+      } else {
+        resultsEl.insertAdjacentHTML('beforeend', '<div class="err-box" style="margin-top:10px">Some meals didn\'t finish:\n' + msg + '</div>');
+      }
       return;
     }
     var busy = (Date.now() - startedAt) > GEN_BUSY_THRESHOLD_MS;
-    if (busy) {
+    if (busy && !shownAny) {
       resultsEl.innerHTML = '<div class="loader"><div class="spin"></div><span>The kitchen is busy right now — we\'ll email you when your options are ready. Feel free to close this tab.</span></div>';
     }
     await new Promise(function(resolve) { setTimeout(resolve, busy ? GEN_POLL_BACKOFF_MS : GEN_POLL_INTERVAL_MS); });
@@ -1773,6 +1800,12 @@ async function checkPendingGenerationJob() {
 async function runGenerateRecipes() {
   var resultsEl = document.getElementById('gen-results');
   resultsEl.innerHTML = '<div class="loader"><div class="spin"></div><span>Thinking of something good…</span></div>';
+  // Fresh batch starting — reset once here, not inside applyGenerationResult
+  // (which now runs repeatedly as slots trickle in and must never wipe
+  // day-picks the user already made on an earlier partial update).
+  G.genResults = {};
+  G.genAssignments = {};
+  G.genProgress = null;
 
   var dayCodes = ['mon','tue','wed','thu','fri','sat','sun'];
   var slots = [];
@@ -1810,6 +1843,17 @@ function renderGenerateResults() {
   var resultsEl = document.getElementById('gen-results');
   if (!resultsEl || !G.genResults) return;
 
+  // Shown while a batch is still cooking, gone once completed >= total —
+  // "the chef is searching" instead of a dead spinner during the wait.
+  var progressBanner = '';
+  var stillCooking = G.genProgress && G.genProgress.completed < G.genProgress.total;
+  if (stillCooking) {
+    progressBanner = '<div class="gen-progress" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;color:var(--mut);font-size:.85rem">'
+      + '<div class="spin" style="width:14px;height:14px;border-width:2px"></div>'
+      + '<span>👨‍🍳 ' + G.genProgress.completed + ' of ' + G.genProgress.total + ' meals ready — still cooking the rest…</span>'
+      + '</div>';
+  }
+
   var dayButtons = function(opt, mealType) {
     return DAY_ORDER.map(function(d) {
       var code = _DAY_CODE[d];
@@ -1846,7 +1890,10 @@ function renderGenerateResults() {
     return '<div class="gen-slot-h" style="font-weight:700;margin:14px 0 8px">' + GEN_MEAL_LABELS[mt] + '</div>' + cards;
   }).join('');
 
-  resultsEl.innerHTML = sections || '<div class="empty">No options came back — try again.</div>';
+  // While still cooking with nothing ready yet, don't show the "try again"
+  // empty state — that's only a real dead-end once nothing is coming.
+  var emptyMsg = stillCooking ? '' : '<div class="empty">No options came back — try again.</div>';
+  resultsEl.innerHTML = progressBanner + (sections || emptyMsg);
 }
 
 async function assignOptionToDay(recipeId, day, mealType) {
