@@ -122,7 +122,12 @@ def validate_generated_recipe(recipe: dict, profile: UserProfile, recent_titles:
             raise GeneratedRecipeInvalid(
                 f"Ingredient '{ingredient.get('name')}' conflicts with an allergy"
             )
-        if ingredient.get("qty", 0) <= 0:
+        qty = ingredient.get("qty", 0)
+        # A model returning qty as a numeric-looking string (e.g. "200"
+        # instead of 200) used to crash this with an uncaught TypeError —
+        # found live via the DeepInfra benchmark — instead of the intended
+        # reject-and-regenerate path every other bad-content case here gets.
+        if not isinstance(qty, int | float) or isinstance(qty, bool) or qty <= 0:
             raise GeneratedRecipeInvalid(f"Ingredient '{ingredient.get('name')}' has invalid qty")
 
     if recipe.get("title") in recent_titles:

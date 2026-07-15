@@ -443,7 +443,21 @@ async def run_tool_use_loop(
 
 def _parse_arguments(raw: str | dict) -> dict:
     parsed = raw if isinstance(raw, dict) else json.loads(raw)
-    return _normalise_stringified_json(parsed)
+    normalised = _normalise_stringified_json(parsed)
+    if not isinstance(normalised, dict):
+        # Found live via the DeepInfra benchmark (2026-07-15): a model can
+        # wrap its tool-call arguments in a top-level JSON array instead of
+        # an object (e.g. `[{...}]`) — valid JSON, wrong shape. Every caller
+        # assumes a dict (recipe["ingredients"], .get(), etc.), so this used
+        # to silently hand back a list and crash deep in unrelated code
+        # instead of at this single, already-guarded boundary. Raising
+        # TypeError here (not a new exception type) means this plugs into
+        # the SAME corrective-retry handling both call sites already have
+        # for _parse_arguments — intermediate tool calls (broad except) and
+        # the final-answer branch (explicit `except (json.JSONDecodeError,
+        # TypeError)`, added for the sibling malformed-JSON bug).
+        raise TypeError(f"expected a JSON object, got {type(normalised).__name__}")
+    return normalised
 
 
 def _normalise_stringified_json(value: Any) -> Any:
