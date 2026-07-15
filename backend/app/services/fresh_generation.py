@@ -170,7 +170,7 @@ async def generate_fresh_option(
     last_error: Exception | None = None
     for _ in range(MAX_GENERATION_ATTEMPTS):
         try:
-            recipe = await ai_client.run_tool_use_loop(
+            recipe, provider = await ai_client.run_tool_use_loop(
                 system_prompt,
                 f"Generate one {meal_type} recipe now.",
                 _SUBMIT_ONLY_SCHEMAS,
@@ -181,7 +181,7 @@ async def generate_fresh_option(
             validate_ingredient_shape(recipe["ingredients"])
             recipe["ingredients"] = allergens.apply_allergen_safety_net(recipe["ingredients"])
             validate_generated_recipe(recipe, profile, recent_titles)
-            return await _persist_fresh_partial(recipe, generation_request_id)
+            return await _persist_fresh_partial(recipe, generation_request_id, provider)
         except (GeneratedRecipeInvalid, ai_client.AIProviderExhausted) as exc:
             # AIProviderExhausted used to escape this loop immediately, even
             # though MAX_GENERATION_ATTEMPTS implies multiple tries — a single
@@ -195,7 +195,7 @@ async def generate_fresh_option(
     raise ai_client.AIProviderExhausted from last_error
 
 
-async def _persist_fresh_partial(recipe: dict, generation_request_id: str) -> dict:
+async def _persist_fresh_partial(recipe: dict, generation_request_id: str, provider: str) -> dict:
     """Step 23 + 24 — populate required_ingredient_tags and persist to the
     pool immediately as 'partial', searchable/reusable by any user."""
     ingredients = recipe["ingredients"]
@@ -207,7 +207,7 @@ async def _persist_fresh_partial(recipe: dict, generation_request_id: str) -> di
             (title, cuisine, main_protein, brief_description, ingredients,
              required_ingredient_tags, image_prompt, base_serves, time, kcal,
              status, source, verified)
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, 'partial', 'openrouter', false)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, 'partial', $11, false)
         RETURNING id, title, brief_description, cuisine, main_protein, ingredients,
                   image_url, status, source, base_serves, time, kcal
         """,
@@ -221,6 +221,7 @@ async def _persist_fresh_partial(recipe: dict, generation_request_id: str) -> di
         BASE_SERVES,
         recipe.get("time"),
         recipe.get("kcal"),
+        provider,
     )
     await db.pool().execute(
         "UPDATE prompt_audit_log SET recipe_id = $1 WHERE generation_request_id = $2",

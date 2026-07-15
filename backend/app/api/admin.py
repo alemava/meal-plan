@@ -1,9 +1,16 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 import pool_warmer
 from app.core import db
 from app.core.security import require_admin, require_internal_secret
-from app.services import cloudflare, cost_status, provider_quota, recipe_audit
+from app.services import (
+    cloudflare,
+    cost_status,
+    provider_quality,
+    provider_quota,
+    provider_status,
+    recipe_audit,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -37,6 +44,64 @@ async def provider_usage_report(_user_id: str = Depends(require_admin)):
     rate, and how many users have actually hit the 'chef is busy' message
     today — provider_quota.py owns the underlying tracking."""
     return await provider_quota.get_usage_report()
+
+
+@router.get("/provider-quality-report")
+async def provider_quality_report(since_days: int = 30, _user_id: str = Depends(require_admin)):
+    """Reliability (attempt success/latency) + content-quality (defect rate,
+    tiered by trustworthiness) per provider — the data behind the "is
+    Groq/OpenRouter good enough for prod" decision. Read alongside
+    provider-usage-report above (capacity is a separate axis from quality)."""
+    return await provider_quality.get_provider_quality_scorecard(since_days)
+
+
+@router.get("/recipe-audit-findings")
+async def recipe_audit_findings(
+    resolved: bool = False,
+    provider: str | None = None,
+    tier: str | None = None,
+    check_name: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    _user_id: str = Depends(require_admin),
+):
+    """Filterable view of recipe_audit_findings + a backlog-size summary.
+    tier is one of deterministic/heuristic/semantic (see provider_quality.py);
+    check_name takes precedence over tier if both are given."""
+    try:
+        return await recipe_audit.list_findings(resolved, provider, tier, check_name, limit, offset)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/recipe-audit-findings/{finding_id}/resolve")
+async def resolve_recipe_audit_finding(
+    finding_id: str, note: str | None = None, _user_id: str = Depends(require_admin)
+):
+    """Until this endpoint existed, resolving a finding required a manual
+    Supabase edit — there was no code path that ever set resolved=true."""
+    result = await recipe_audit.resolve_finding(finding_id, note)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    return result
+
+
+@router.get("/provider-status")
+async def get_provider_status(_user_id: str = Depends(require_admin)):
+    """Current enabled/disabled state for every provider ever manually
+    toggled (see provider_status.py for why this is manual-only, never
+    auto-flipped by quality signals)."""
+    return await provider_status.get_all_statuses()
+
+
+@router.post("/provider-status/{provider}")
+async def set_provider_status(
+    provider: str, enabled: bool, reason: str | None = None, _user_id: str = Depends(require_admin)
+):
+    """The actual lever for a go/no-go call on a provider — before this
+    endpoint existed, even a clear-cut "turn OpenRouter off" decision had
+    no way to act on it short of a code change and redeploy."""
+    return await provider_status.set_enabled(provider, enabled, reason)
 
 
 @router.post("/reembed")

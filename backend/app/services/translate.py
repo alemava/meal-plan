@@ -91,7 +91,7 @@ async def _translate(recipe: dict, language: str, recipe_id: str) -> dict:
         f"Translate the title, ingredient names (same order), and steps into {language}."
     )
 
-    result = await ai_client.run_tool_use_loop(
+    result, _provider = await ai_client.run_tool_use_loop(
         system_prompt,
         user_prompt,
         TRANSLATE_TOOLS,

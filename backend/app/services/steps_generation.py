@@ -186,7 +186,7 @@ async def generate_steps(recipe: dict) -> list[dict]:
         "Generate the cooking steps for this recipe."
     )
 
-    result = await ai_client.run_tool_use_loop(
+    result, _provider = await ai_client.run_tool_use_loop(
         system_prompt,
         user_prompt,
         STEPS_TOOLS,

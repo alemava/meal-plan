@@ -27,7 +27,7 @@ from pydantic import ValidationError
 
 from app.core import db
 from app.models.recipes import Ingredient
-from app.services import cloudflare, resend_client
+from app.services import cloudflare, provider_quality, resend_client
 from app.services.guardrails import GeneratedRecipeInvalid, validate_ingredient_units
 from app.services.steps_generation import GeneratedStepsInvalid, validate_steps
 
@@ -228,6 +228,85 @@ async def _structural_findings() -> list[dict]:
     return findings
 
 
+def evaluate_kcal_plausibility(
+    ingredients: list, stored_kcal: int | None, base_serves: int | None
+) -> list[tuple[str, str]]:
+    """Pure, DB-free version of the per-recipe kcal-plausibility logic —
+    extracted 2026-07-15 so the nightly audit (_kcal_findings below) and the
+    paired golden-set test (tests/test_golden_set_quality.py) share one
+    implementation instead of two copies that could silently drift, exactly
+    the failure mode Part A's generation_rules.py was built to prevent for
+    prompts. Returns (check_name, detail) pairs, empty if everything passes.
+    Preserves the original control flow: an implausible ratio short-circuits
+    the other two checks for this recipe (same as the pre-extraction code's
+    `continue`), since a wildly-off estimate makes the range/round checks
+    redundant noise on top of an already-flagged row."""
+    results: list[tuple[str, str]] = []
+    # Malformed (non-dict) ingredients are already reported by the
+    # structural check — skip them here rather than crashing.
+    shaped = [ing for ing in (ingredients or []) if isinstance(ing, dict)]
+    if not shaped or not stored_kcal or stored_kcal <= 0:
+        return results
+
+    estimated = 0.0
+    matched_mass = 0.0
+    total_mass = 0.0
+    for ing in shaped:
+        grams, matched = _estimate_grams(ing)
+        estimated += grams * _kcal_per_gram_for(ing.get("name") or "")
+        total_mass += grams
+        if matched:
+            matched_mass += grams
+    if total_mass <= 0 or estimated <= 0:
+        return results
+
+    unmatched_ratio = 1 - (matched_mass / total_mass)
+    threshold = (
+        KCAL_RATIO_THRESHOLD_LOOSE
+        if unmatched_ratio > UNMATCHED_MASS_TOLERANCE
+        else KCAL_RATIO_THRESHOLD
+    )
+
+    ratio = max(stored_kcal, estimated) / max(min(stored_kcal, estimated), 1)
+    if ratio > threshold:
+        results.append(
+            ("kcal_implausible", f"stored={stored_kcal} vs rough estimate={round(estimated)} ({ratio:.1f}x off)")
+        )
+        return results
+
+    serves = base_serves or 1
+    per_serving = stored_kcal / serves
+    if not (MIN_PLAUSIBLE_KCAL_PER_SERVING <= per_serving <= MAX_PLAUSIBLE_KCAL_PER_SERVING):
+        results.append(
+            ("kcal_out_of_range", f"{per_serving:.0f} kcal/serving (stored={stored_kcal}, base_serves={serves})")
+        )
+
+    return results
+
+
+# Smallest real cluster found in the original placeholder discovery (three
+# unrelated recipes independently at exactly 1200 kcal; fifteen at 420, four
+# at 320) — impossible by chance for genuine per-ingredient computation.
+KCAL_DUPLICATE_CLUSTER_MIN_SIZE = 3
+
+
+def find_kcal_duplicates(recipes: list[dict], min_cluster_size: int = KCAL_DUPLICATE_CLUSTER_MIN_SIZE):
+    """Groups recipes by their exact stored kcal, keeping only values shared
+    by min_cluster_size+ recipes. This is the real signal behind
+    kcal_suspiciously_round — first tried as a simple per-recipe "is this
+    divisible by 20" check, but that flagged 95/166 recipes on a real
+    full-pool run (2026-07-15), mostly individually-correct totals that
+    just happened to round cleanly (this session's own manual kcal fixes
+    included). The actual tell in the original discovery was never
+    roundness alone, it was many UNRELATED dishes sharing one EXACT total —
+    a coincidence real ingredient math essentially can't produce."""
+    by_kcal: dict[int, list[dict]] = {}
+    for r in recipes:
+        if r.get("kcal"):
+            by_kcal.setdefault(r["kcal"], []).append(r)
+    return {kcal: group for kcal, group in by_kcal.items() if len(group) >= min_cluster_size}
+
+
 async def _kcal_findings() -> list[dict]:
     findings: list[dict] = []
     rows = await db.pool().fetch(
@@ -235,52 +314,18 @@ async def _kcal_findings() -> list[dict]:
         "WHERE status != 'stub' AND kcal IS NOT NULL AND kcal > 0"
     )
     for row in rows:
-        # Malformed (non-dict) ingredients are already reported by the
-        # structural check — skip them here rather than crashing.
-        ingredients = [ing for ing in (row["ingredients"] or []) if isinstance(ing, dict)]
-        if not ingredients:
-            continue
+        for check_name, detail in evaluate_kcal_plausibility(
+            row["ingredients"], row["kcal"], row["base_serves"]
+        ):
+            findings.append(_finding(row["id"], check_name, detail, row["title"]))
 
-        estimated = 0.0
-        matched_mass = 0.0
-        total_mass = 0.0
-        for ing in ingredients:
-            grams, matched = _estimate_grams(ing)
-            estimated += grams * _kcal_per_gram_for(ing.get("name") or "")
-            total_mass += grams
-            if matched:
-                matched_mass += grams
-        if total_mass <= 0 or estimated <= 0:
-            continue
-
-        unmatched_ratio = 1 - (matched_mass / total_mass)
-        threshold = (
-            KCAL_RATIO_THRESHOLD_LOOSE
-            if unmatched_ratio > UNMATCHED_MASS_TOLERANCE
-            else KCAL_RATIO_THRESHOLD
-        )
-
-        stored = row["kcal"]
-        ratio = max(stored, estimated) / max(min(stored, estimated), 1)
-        if ratio > threshold:
+    for kcal_value, cluster in find_kcal_duplicates([dict(r) for r in rows]).items():
+        for row in cluster:
             findings.append(
                 _finding(
                     row["id"],
-                    "kcal_implausible",
-                    f"stored={stored} vs rough estimate={round(estimated)} ({ratio:.1f}x off)",
-                    row["title"],
-                )
-            )
-            continue
-
-        serves = row["base_serves"] or 1
-        per_serving = stored / serves
-        if not (MIN_PLAUSIBLE_KCAL_PER_SERVING <= per_serving <= MAX_PLAUSIBLE_KCAL_PER_SERVING):
-            findings.append(
-                _finding(
-                    row["id"],
-                    "kcal_out_of_range",
-                    f"{per_serving:.0f} kcal/serving (stored={stored}, base_serves={serves})",
+                    "kcal_suspiciously_round",
+                    f"{kcal_value} kcal, shared with {len(cluster) - 1} other unrelated recipe(s)",
                     row["title"],
                 )
             )
@@ -503,3 +548,83 @@ async def run_recipe_audit() -> dict:
         "audit_semantic_flags": len(semantic["findings"]),
         "audit_semantic_error": semantic["error"],
     }
+
+
+_TIER_CHECK_NAMES = {
+    "deterministic": provider_quality.DETERMINISTIC_CHECKS,
+    "heuristic": provider_quality.HEURISTIC_CHECKS,
+    "semantic": provider_quality.SEMANTIC_CHECKS,
+}
+
+
+async def list_findings(
+    resolved: bool = False,
+    provider: str | None = None,
+    tier: str | None = None,
+    check_name: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """Part 2 of the 2026-07-15 quality-monitoring work — until this
+    existed, the only way to resolve a finding was a manual Supabase edit;
+    there was no code path that ever set resolved=true. Filterable backlog
+    view + a summary block, since "how big is the backlog and is it
+    growing" is the actual operational question, not just the raw list."""
+    conditions = ["f.resolved = $1"]
+    params: list = [resolved]
+
+    if provider:
+        params.append(provider)
+        conditions.append(f"r.source = ${len(params)}")
+    if check_name:
+        params.append(check_name)
+        conditions.append(f"f.check_name = ${len(params)}")
+    elif tier:
+        names = _TIER_CHECK_NAMES.get(tier)
+        if not names:
+            raise ValueError(f"Unknown tier '{tier}' — expected one of {list(_TIER_CHECK_NAMES)}")
+        params.append(list(names))
+        conditions.append(f"f.check_name = ANY(${len(params)}::text[])")
+
+    where_clause = " AND ".join(conditions)
+    params.extend([limit, offset])
+    rows = await db.pool().fetch(
+        f"""
+        SELECT f.id, f.recipe_id, r.title, r.source AS provider, f.check_name, f.detail,
+               f.created_at, f.resolved, f.resolved_at, f.resolution_note
+        FROM recipe_audit_findings f
+        JOIN recipes r ON r.id = f.recipe_id
+        WHERE {where_clause}
+        ORDER BY f.created_at DESC
+        LIMIT ${len(params) - 1} OFFSET ${len(params)}
+        """,
+        *params,
+    )
+
+    summary = await db.pool().fetchrow(
+        """
+        SELECT
+            count(*) FILTER (WHERE NOT resolved) AS open_total,
+            count(*) FILTER (WHERE NOT resolved AND created_at >= now() - interval '7 days')
+                AS opened_this_week,
+            count(*) FILTER (WHERE resolved AND resolved_at >= now() - interval '7 days')
+                AS resolved_this_week
+        FROM recipe_audit_findings
+        """
+    )
+
+    return {"findings": [dict(r) for r in rows], "summary": dict(summary)}
+
+
+async def resolve_finding(finding_id: str, note: str | None = None) -> dict | None:
+    row = await db.pool().fetchrow(
+        """
+        UPDATE recipe_audit_findings
+        SET resolved = true, resolved_at = now(), resolution_note = $1
+        WHERE id = $2
+        RETURNING id, recipe_id, check_name, detail, resolved, resolved_at, resolution_note
+        """,
+        note,
+        finding_id,
+    )
+    return dict(row) if row else None

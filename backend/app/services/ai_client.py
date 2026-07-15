@@ -8,7 +8,7 @@ import httpx
 
 from app.core import db
 from app.core.config import get_settings
-from app.services import provider_quota
+from app.services import provider_quota, provider_status
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_PRIMARY_MODEL = "openai/gpt-oss-120b:free"
@@ -128,7 +128,7 @@ async def chat_completion(
     purpose: str,
     recipe_id: str | None = None,
     generation_request_id: str | None = None,
-) -> dict:
+) -> tuple[dict, str]:
     """Tries Groq first, then OpenRouter (with its own 2-model fallback) as a
     fully independent second upstream (guardrail: no BYOK routing — see the
     OpenRouter-vs-Groq design discussion). Logs every attempt to
@@ -137,14 +137,28 @@ async def chat_completion(
     recipe_id is already known for existing-recipe call sites; for brand-new
     recipes generation_request_id lets the caller backfill recipe_id later.
 
+    Returns (response, provider) — added 2026-07-15 after finding every
+    caller was hardcoding `source='openrouter'` regardless of which provider
+    actually answered (Groq is tried first and usually wins), making
+    per-provider quality comparisons impossible from the recipes table.
+
     Groq is primary (not OpenRouter) — measured live: Groq's llama-3.3-70b
     (LPU hardware, no reasoning trace) answers in ~1s vs. OpenRouter's
     gpt-oss-120b (a reasoning model) taking ~30s for the same request. Groq
     occasionally malforms its own tool-call syntax (a real, seen-live
     reliability quirk), but the caller-level retry loop (fresh_generation.py's
     MAX_GENERATION_ATTEMPTS) now actually retries on that instead of failing
-    the whole attempt, making the latency win worth the trade-off."""
-    if await _wait_for_groq_capacity():
+    the whole attempt, making the latency win worth the trade-off.
+
+    Both providers can also be manually disabled via provider_status.py
+    (production-readiness Part 4) — deliberately manual-only, never
+    auto-flipped by this function itself; see that module's docstring for
+    why. groq_only_completion/openrouter_only_completion deliberately do
+    NOT check this — they exist specifically to force a provider even when
+    diagnosing it (the golden-set test), so gating them the same way would
+    make a disabled provider unmeasurable right when you'd want data on it
+    most."""
+    if await provider_status.is_enabled("groq") and await _wait_for_groq_capacity():
         start = time.monotonic()
         try:
             result = await _call_groq(messages, tools)
@@ -152,7 +166,7 @@ async def chat_completion(
                 "groq", messages, result, start, purpose, None, recipe_id, generation_request_id
             )
             await provider_quota.check_and_alert("groq")
-            return result
+            return result, "groq"
         except Exception as groq_error:
             await _log_call(
                 "groq",
@@ -164,16 +178,19 @@ async def chat_completion(
                 recipe_id,
                 generation_request_id,
             )
-    # Either the Groq call itself failed above, or the queue's wait budget
-    # ran out without a slot freeing up — either way, fall through to
-    # OpenRouter exactly as before.
+    # Either Groq is manually disabled, the call itself failed above, or the
+    # queue's wait budget ran out without a slot freeing up — either way,
+    # fall through to OpenRouter exactly as before.
 
-    if not await provider_quota.can_call("openrouter"):
-        # Self-imposed cutoff already reached — don't spend a call attempt
-        # that's already doomed to fail (or worse, count against the real
-        # limit right as it's being hit). Skip straight to the graceful
-        # exhaustion path the caller already handles.
-        raise AIProviderExhausted("openrouter self-imposed cutoff reached")
+    if not await provider_status.is_enabled("openrouter") or not await provider_quota.can_call(
+        "openrouter"
+    ):
+        # Manually disabled or self-imposed cutoff already reached — don't
+        # spend a call attempt that's already doomed to fail (or worse,
+        # count against the real limit right as it's being hit). Skip
+        # straight to the graceful exhaustion path the caller already
+        # handles.
+        raise AIProviderExhausted("openrouter disabled or self-imposed cutoff reached")
 
     start = time.monotonic()
     try:
@@ -184,7 +201,7 @@ async def chat_completion(
             "openrouter", messages, result, start, purpose, None, recipe_id, generation_request_id
         )
         await provider_quota.check_and_alert("openrouter")
-        return result
+        return result, "openrouter"
     except Exception as openrouter_error:
         await _log_call(
             "openrouter",
@@ -205,7 +222,7 @@ async def openrouter_only_completion(
     purpose: str,
     recipe_id: str | None = None,
     generation_request_id: str | None = None,
-) -> dict:
+) -> tuple[dict, str]:
     """Used ONLY by the async steps-generation worker (Cloud Tasks) — see
     OPENROUTER_FREE_ROUTER_MODEL above. Deliberately skips Groq entirely
     (unlike chat_completion): the user's explicit design keeps these two
@@ -224,9 +241,42 @@ async def openrouter_only_completion(
         )
         await _log_call("openrouter", messages, result, start, purpose, None, recipe_id, None)
         await provider_quota.check_and_alert("openrouter")
-        return result
+        return result, "openrouter"
     except Exception as exc:
         await _log_call("openrouter", messages, None, start, purpose, str(exc), recipe_id, None)
+        raise AIProviderExhausted from exc
+
+
+async def groq_only_completion(
+    messages: list[dict],
+    tools: list[dict],
+    purpose: str,
+    recipe_id: str | None = None,
+    generation_request_id: str | None = None,
+) -> tuple[dict, str]:
+    """Forces Groq only, bypassing chat_completion's waterfall entirely —
+    added 2026-07-15 for the paired golden-set quality test (production-
+    readiness Part 3). chat_completion's organic traffic can't fairly
+    compare providers: OpenRouter only ever sees the residual requests Groq
+    already failed on, not a random sample of the same distribution. This
+    plus openrouter_only_completion, called on the SAME request matrix, is
+    how the comparison becomes fair. Mirrors openrouter_only_completion's
+    shape exactly so both plug into run_tool_use_loop's completion_fn."""
+    if not await _wait_for_groq_capacity():
+        raise AIProviderExhausted("groq self-imposed cutoff reached / capacity unavailable")
+
+    start = time.monotonic()
+    try:
+        result = await _call_groq(messages, tools)
+        await _log_call(
+            "groq", messages, result, start, purpose, None, recipe_id, generation_request_id
+        )
+        await provider_quota.check_and_alert("groq")
+        return result, "groq"
+    except Exception as exc:
+        await _log_call(
+            "groq", messages, None, start, purpose, str(exc), recipe_id, generation_request_id
+        )
         raise AIProviderExhausted from exc
 
 
@@ -294,22 +344,29 @@ async def run_tool_use_loop(
     final_tool_name: str = "submit_recipe",
     recipe_id: str | None = None,
     generation_request_id: str | None = None,
-    completion_fn: Callable[..., Awaitable[dict]] = chat_completion,
-) -> dict:
+    completion_fn: Callable[..., Awaitable[tuple[dict, str]]] = chat_completion,
+) -> tuple[dict, str]:
     """Multi-turn tool-use loop. Ends when the model calls `final_tool_name`.
     Guardrail 19(b): a bad/unknown tool call gets a corrective tool_result
     instead of crashing, up to MAX_CORRECTIVE_RETRIES before giving up.
     completion_fn defaults to the Groq-then-OpenRouter chat_completion, but
     the async steps-generation worker passes openrouter_only_completion
-    instead (see there for why)."""
+    instead (see there for why).
+
+    Returns (parsed_arguments, provider) — provider is whichever one
+    answered the LAST turn (the one that actually produced final_tool_name);
+    a multi-turn conversation could in theory span providers if an earlier
+    turn's provider later dropped below quota mid-loop, so this always
+    reflects the true source of the final answer, not just the first turn."""
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
     corrective_retries = 0
+    last_provider = "unknown"
 
     for _ in range(MAX_TOOL_LOOP_TURNS):
-        response = await completion_fn(
+        response, last_provider = await completion_fn(
             messages,
             tools,
             purpose,
@@ -335,7 +392,22 @@ async def run_tool_use_loop(
         for call in tool_calls:
             name = call["function"]["name"]
             if name == final_tool_name:
-                return _parse_arguments(call["function"]["arguments"])
+                try:
+                    return _parse_arguments(call["function"]["arguments"]), last_provider
+                except (json.JSONDecodeError, TypeError) as exc:
+                    # Real bug found live (2026-07-15, via the golden-set
+                    # quality test): a malformed FINAL answer used to crash
+                    # this whole loop uncaught, past every caller's own
+                    # retry logic (fresh_generation.py's MAX_GENERATION_
+                    # ATTEMPTS never got a chance to run, since this wasn't
+                    # AIProviderExhausted). Same corrective-retry treatment
+                    # as a malformed intermediate tool call below, not a
+                    # special case — cheaper than aborting the whole attempt,
+                    # since the model gets a chance to self-correct within
+                    # this same conversation instead of starting over cold.
+                    messages.append(_corrective_tool_result(call, f"Malformed arguments: {exc}"))
+                    corrective_retries += 1
+                    continue
 
             if name not in dispatch:
                 messages.append(_corrective_tool_result(call, f"Unknown tool '{name}'"))

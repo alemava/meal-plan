@@ -64,9 +64,10 @@ async def expand_stub(stub: dict) -> dict:
 
     last_error: Exception | None = None
     result = None
+    provider = "openrouter"
     for _ in range(MAX_EXPANSION_ATTEMPTS):
         try:
-            result = await ai_client.run_tool_use_loop(
+            result, provider = await ai_client.run_tool_use_loop(
                 system_prompt,
                 user_prompt,
                 EXPANSION_TOOLS,
@@ -92,13 +93,14 @@ async def expand_stub(stub: dict) -> dict:
         """
         UPDATE recipes
         SET ingredients = $1::jsonb, required_ingredient_tags = $2, time = $3, kcal = $4,
-            status = 'partial', source = 'openrouter'
-        WHERE id = $5
+            status = 'partial', source = $5
+        WHERE id = $6
         """,
         ingredients,
         required_tags,
         result.get("time"),
         result.get("kcal"),
+        provider,
         stub["id"],
     )
 
