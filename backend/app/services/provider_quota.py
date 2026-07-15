@@ -22,9 +22,26 @@ from app.services import resend_client
 # the real observed average of ~1754 tokens/call, 950 requests would be
 # ~1.66M tokens, wildly over the actual 100K/day limit. DAILY_TOKEN_CAPS
 # below tracks the real thing directly instead of proxying it.
+#
+# 2026-07-15: the same request-count-vs-token-budget mismatch existed for
+# the PER-MINUTE cap too, just less obviously — PER_MINUTE_CAPS["groq"]=6
+# was a flat request count guessed against Groq's real 12,000 TPM limit,
+# with no visibility into whether a given minute's calls were actually
+# small or large. Measured live (all-time, per purpose, error-free calls):
+# generate_recipes averages 1961 tokens/call (max 3387), stub_expansion
+# averages 1028 (max 1493) — a batch of 15 generate_recipes-heavy calls
+# could burst well past 12,000 TPM long before hitting a flat count of 6,
+# while a stub_expansion-heavy minute had real unused headroom under that
+# same flat "6". PER_MINUTE_TOKEN_CAPS tracks the real thing directly, same
+# fix as the daily cap got. The flat per-minute request cap stays too, as a
+# cheap secondary guard against Groq's separate real 30 RPM limit — raised
+# from 6 to 25 (one-under-30, same "stay just under the real limit"
+# philosophy as OpenRouter's 19) now that the token cap is the actual
+# limiting factor for realistic traffic, not this one.
 DAILY_CAPS = {"openrouter": 999}
-PER_MINUTE_CAPS = {"openrouter": 19, "groq": 6}
+PER_MINUTE_CAPS = {"openrouter": 19, "groq": 25}
 DAILY_TOKEN_CAPS = {"groq": 95000}  # one comfortably under Groq's real 100,000 TPD cap
+PER_MINUTE_TOKEN_CAPS = {"groq": 10800}  # one comfortably under Groq's real 12,000 TPM cap
 ALERT_THRESHOLDS = [500, 900]  # informational only — never blocks anything
 
 
@@ -56,6 +73,16 @@ async def get_minute_usage(provider: str) -> int:
     )
 
 
+async def get_minute_token_usage(provider: str) -> int:
+    since = datetime.now(UTC) - timedelta(minutes=1)
+    return await db.pool().fetchval(
+        "SELECT coalesce(sum(tokens_in + tokens_out), 0) FROM prompt_audit_log "
+        "WHERE model LIKE $1 AND created_at >= $2",
+        f"{provider}:%",
+        since,
+    )
+
+
 async def get_percent_used(provider: str) -> float:
     """How much of today's budget is gone, whichever metric actually governs
     this provider (request count vs. token count — see DAILY_TOKEN_CAPS'
@@ -73,15 +100,20 @@ async def get_percent_used(provider: str) -> float:
 
 async def can_call(provider: str) -> bool:
     """The single check every OpenRouter call site (sync fallback and the
-    async steps worker) must pass before attempting a call."""
+    async steps worker) must pass before attempting a call. Also the check
+    _wait_for_groq_capacity() polls in ai_client.py, so the token-aware
+    minute cap below directly benefits that path too, no separate wiring."""
     daily_cap = DAILY_CAPS.get(provider)
     minute_cap = PER_MINUTE_CAPS.get(provider)
-    token_cap = DAILY_TOKEN_CAPS.get(provider)
+    daily_token_cap = DAILY_TOKEN_CAPS.get(provider)
+    minute_token_cap = PER_MINUTE_TOKEN_CAPS.get(provider)
     if daily_cap is not None and await get_daily_usage(provider) >= daily_cap:
         return False
     if minute_cap is not None and await get_minute_usage(provider) >= minute_cap:
         return False
-    if token_cap is not None and await get_daily_token_usage(provider) >= token_cap:
+    if daily_token_cap is not None and await get_daily_token_usage(provider) >= daily_token_cap:
+        return False
+    if minute_token_cap is not None and await get_minute_token_usage(provider) >= minute_token_cap:
         return False
     return True
 
