@@ -26,12 +26,22 @@ MONTHLY_DEEPINFRA_CAP_USD = 5.0
 # was 100% reactive until now (attempt Cloudflare, only fall back if it
 # raises). Cloudflare's response carries no per-call Neuron cost (checked:
 # cloudflare.py only ever reads image bytes or a plain error), so this counts
-# call attempts against CF's real ~10K Neurons/day free tier (shared with the
-# 2 free text call sites in provider_quota.py's cloudflare_text cap) rather
-# than real Neurons — a known simplification, not false precision. Same idea
-# as Groq's request-count cap before its token-based fix, just without a
-# metric CF actually exposes to replace it with. Conservative, tunable.
-CLOUDFLARE_IMAGE_DAILY_CAP = 300
+# call attempts, not real Neurons — a known simplification, not false
+# precision. The cap itself IS real-Neuron-derived, though: measured live via
+# a single isolated generate_image call (2026-07-16, 08:17:33-35 UTC) cross-
+# checked against the account's real per-minute Neuron report — 173 Neurons
+# for that one call, not the ~53 a same-day aggregate (1,380 Neurons / 26
+# logged calls on 2026-07-15) would have suggested. Trusting the clean
+# single-call measurement over the aggregate, since the aggregate implies
+# some Cloudflare image spend that day wasn't captured by this table's count
+# (same untracked-direct-test-call gap this project already hit once for
+# DeepInfra's usage tracking). 10,000 Neurons/day ÷ 173 ≈ 58 — the full
+# theoretical ceiling if 100% of the shared free tier went to images alone,
+# no margin reserved for the 2 free text call sites in provider_quota.py's
+# cloudflare_text cap (user's explicit choice over a more conservative
+# number). Real measurement, but still just one sample — revisit if a second
+# controlled test disagrees.
+CLOUDFLARE_IMAGE_DAILY_CAP = 58
 
 
 async def _get_flag(key: str) -> bool:
