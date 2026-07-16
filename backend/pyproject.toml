@@ -14,6 +14,11 @@ ignore = ["E501"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+# golden_set was documented as opt-in ("Run explicitly: pytest -m golden_set")
+# but nothing actually excluded it — found live (2026-07-16) when a plain
+# `pytest` run silently spent real Groq/OpenRouter quota and failed on a
+# noisy live-model pass-rate assertion unrelated to the change being tested.
+addopts = "-m 'not golden_set'"
 markers = [
     "golden_set: manual pre-launch quality gate — makes real Groq/OpenRouter calls, spends real quota, takes real wall-clock time. Never run in CI (none exists). Run explicitly: pytest -m golden_set",
 ]
