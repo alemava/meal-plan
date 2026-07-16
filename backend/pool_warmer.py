@@ -13,7 +13,7 @@ import json
 import random
 
 from app.core import db
-from app.services import cloudflare, image_chain, provider_quota, recipe_audit
+from app.services import cloudflare, deepinfra, image_chain, provider_quota, recipe_audit
 from app.services.generation_rules import DEFINING_COMPONENTS_RULE, DISH_AUTHENTICITY_RULE
 from app.services.profile import DEFAULT_CUISINES
 from app.services.stub_expansion import expand_stub
@@ -84,7 +84,7 @@ async def _generate_one_stub(cuisine: str, meal_type: str) -> None:
         idea["image_prompt"],
     )
 
-    vector = await cloudflare.embed_text(f"{idea['title']}. {idea['brief_description']}")
+    vector = await deepinfra.embed_text(f"{idea['title']}. {idea['brief_description']}")
     await db.pool().execute(
         "UPDATE recipes SET embedding = $1::vector WHERE id = $2",
         cloudflare.vector_literal(vector),

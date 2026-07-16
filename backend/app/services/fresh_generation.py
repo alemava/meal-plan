@@ -3,7 +3,7 @@ import random
 import uuid
 
 from app.core import db
-from app.services import ai_client, allergens, cloudflare, cost_status, tools
+from app.services import ai_client, allergens, cloudflare, cost_status, deepinfra, tools
 from app.services.generation_rules import (
     DEFINING_COMPONENTS_RULE,
     DISH_AUTHENTICITY_RULE,
@@ -240,7 +240,7 @@ async def _persist_fresh_partial(recipe: dict, generation_request_id: str, provi
     # Don't let a downstream embedding failure discard an already-generated,
     # already-validated recipe — /api/admin/reembed backfills it later.
     try:
-        vector = await cloudflare.embed_text(f"{row['title']}. {row['brief_description']}")
+        vector = await deepinfra.embed_text(f"{row['title']}. {row['brief_description']}")
         await db.pool().execute(
             "UPDATE recipes SET embedding = $1::vector WHERE id = $2",
             cloudflare.vector_literal(vector),

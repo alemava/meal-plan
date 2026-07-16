@@ -6,6 +6,7 @@ from app.core.security import require_admin, require_internal_secret
 from app.services import (
     cloudflare,
     cost_status,
+    deepinfra,
     provider_quality,
     provider_quota,
     provider_status,
@@ -107,10 +108,13 @@ async def set_provider_status(
 @router.post("/reembed")
 async def reembed(_user_id: str = Depends(require_admin)):
     """Embed every recipe with embedding IS NULL. Run after any bulk import.
-    Also the manual runbook step for a model swap: null out every recipe's
-    embedding first, THEN call this — it truncates query_embedding_cache
-    (pool_search.py) unconditionally so no stale query-text vector from the
-    old model lingers and gets compared against the new one."""
+    Also the manual runbook step for a real model/provider swap: null out
+    every recipe's embedding first, THEN call this — it truncates
+    query_embedding_cache (pool_search.py) unconditionally so no stale
+    query-text vector from the old model lingers and gets compared against
+    the new one. DeepInfra since 2026-07-16 (was Cloudflare) — deliberately
+    the only embedding provider, no fallback, see pool_search.py's
+    _get_query_vector_literal for why."""
     await db.pool().execute("TRUNCATE query_embedding_cache")
     rows = await db.pool().fetch(
         "SELECT id, title, brief_description FROM recipes WHERE embedding IS NULL"
@@ -121,7 +125,7 @@ async def reembed(_user_id: str = Depends(require_admin)):
     for row in rows:
         source_text = f"{row['title']}. {row['brief_description'] or ''}".strip()
         try:
-            vector = await cloudflare.embed_text(source_text)
+            vector = await deepinfra.embed_text(source_text)
             await db.pool().execute(
                 "UPDATE recipes SET embedding = $1::vector WHERE id = $2",
                 cloudflare.vector_literal(vector),

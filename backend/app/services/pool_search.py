@@ -1,5 +1,5 @@
 from app.core import db
-from app.services import cloudflare, history
+from app.services import cloudflare, deepinfra, history
 from app.services.profile import UserProfile
 
 # Cosine distance from pgvector's `<=>` operator (0 = identical, 2 = opposite).
@@ -21,16 +21,24 @@ async def _get_query_vector_literal(query_text: str) -> str | None:
     `[1,2,...]` string `$n::vector` accepts), so a cache hit needs no codec
     work. Query texts are few and highly repetitive across users/profiles, so
     after the first real search for a given (meal_type, cuisine-set) shape,
-    every later one skips Cloudflare entirely — both a Neurons-spend win and
-    what makes the degraded-pool ladder (search_recipe_pool below) usable
-    even when Cloudflare itself is down."""
+    every later one skips a real embedding call entirely — both a cost win
+    and what makes the degraded-pool ladder (search_recipe_pool below) usable
+    even when the embedding provider itself is down.
+
+    DeepInfra, not Cloudflare, since 2026-07-16 — deliberately the ONLY
+    embedding provider (no automatic fallback to Cloudflare on failure):
+    verified live that the same text embedded by the two providers is only
+    0.976 cosine-similar, not 1.0 — enough noise to corrupt match decisions
+    right at SIMILARITY_THRESHOLD if the pool ever mixed vectors from both.
+    A failure here behaves exactly as a Cloudflare failure used to: no
+    match, never a silent substitute model."""
     cached = await db.pool().fetchval(
         "SELECT embedding::text FROM query_embedding_cache WHERE query_text = $1", query_text
     )
     if cached:
         return cached
     try:
-        vector = await cloudflare.embed_text(query_text)
+        vector = await deepinfra.embed_text(query_text)
     except Exception:
         return None
     literal = cloudflare.vector_literal(vector)
