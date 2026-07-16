@@ -172,6 +172,13 @@ async def generate_recipes_batch_task(payload: dict):
                 slots,
                 already_complete=already_complete,
                 on_slot_complete=_persist,
+                # generation_jobs.pantry was already sanitized once, in the
+                # POST route handler, before this row was ever written — see
+                # generate_recipes.generate_recipes. This is the one read-
+                # back point that makes pantry actually reach a real
+                # generation; _run_generation is never called directly from
+                # the route itself (see class docstring above).
+                pantry=job.get("pantry"),
             ),
             timeout=BATCH_WORKER_TIMEOUT_SECONDS,
         )

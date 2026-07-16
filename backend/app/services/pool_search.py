@@ -57,6 +57,7 @@ async def search_recipe_pool(
     exclude_ids: set[str] | None = None,
     used_cuisines: list[str] | None = None,
     *,
+    avoid_titles: set[str] | None = None,
     relax_suggested: bool = False,
     min_similarity: float | None = None,
     any_cuisine: bool = False,
@@ -69,13 +70,38 @@ async def search_recipe_pool(
     for the degraded-mode fill ladder in generate_recipes.py — each one
     relaxes a single dimension so a caller can widen the search step by step
     instead of giving up when both AI providers are down:
-      - relax_suggested: drop the 28-day "recently shown" exclusion (the
-        60-day "actually used" exclusion and allergen/dislike filters are
-        NEVER relaxed, on any path).
+      - relax_suggested: drop the 7-day "recently shown" exclusion (see
+        history.RECENTLY_SHOWN_WINDOW_DAYS) — a repeat is better than
+        nothing once AI generation itself is unavailable.
       - min_similarity: override SIMILARITY_THRESHOLD.
       - any_cuisine: drop the hard preferred-cuisine filter.
       - include_stubs: a stub needs a live AI call to expand — poison for a
         providers-down fallback, so the ladder always passes False here.
+    The 60-day "actually used" exclusion, the explicit-discard exclusion,
+    avoid_titles, and allergen/dislike filters are NEVER relaxed, on any path.
+
+    2026-07-16: avoid_titles closes a real gap found live — pool matching
+    only ever excluded by exact recipe id (exclude_ids), so two DIFFERENT
+    rows sharing the same title (e.g. two separately-created "Pollo al
+    Ajillo" recipes from different past sessions) could both surface in the
+    same multi-slot batch. Caller passes the batch's accumulated recent
+    titles (case-insensitive); this is a hard filter, not the soft
+    used_cuisines-style fallback below — showing the same dish twice in one
+    request is worse than a thinner candidate pool.
+
+    2026-07-16, same day, second correction: relax_suggested was removed
+    entirely earlier today (replaced by the permanent, explicit discard
+    signal), reasoning that "shown but not picked" should always be free to
+    resurface. That fixed the diagnosed 163-stale-titles bug, but a live
+    regression followed within hours: with zero short-term dedup left, the
+    pool's deterministic similarity ranking (same profile+cuisine+meal_type
+    -> same top candidate every time) and the model's own tendency to
+    converge on the same "obvious" dish both kept resurfacing the exact same
+    recipe on consecutive separate requests. Brought relax_suggested back,
+    now backed by history.get_recently_suggested_recipe_ids's 7-day window
+    instead of the old 28-day one — short session-scoped cooldown against
+    IMMEDIATE repeats, not the old blanket multi-week ban. Coexists with,
+    never replaces, the permanent discard exclusion.
 
     NOT implemented here (no data source exists yet, would be a fake check):
     "recipes whose required_ingredient_tags the user can mostly satisfy" needs
@@ -92,7 +118,8 @@ async def search_recipe_pool(
         return None
 
     recently_used = await history.get_recently_used_recipe_ids(profile.user_id)
-    excluded = recently_used | (exclude_ids or set())
+    discarded = await history.get_discarded_recipe_ids(profile.user_id)
+    excluded = recently_used | discarded | (exclude_ids or set())
     if not relax_suggested:
         excluded |= await history.get_recently_suggested_recipe_ids(profile.user_id)
 
@@ -121,6 +148,7 @@ async def search_recipe_pool(
     threshold = min_similarity if min_similarity is not None else SIMILARITY_THRESHOLD
     preferred_cuisines = {c.lower() for c in profile.cuisines}
     used_cuisines_lower = {c.lower() for c in (used_cuisines or []) if c}
+    avoid_titles_lower = {t.lower() for t in (avoid_titles or set()) if t}
     # Soft preference, not a hard filter: skip a cuisine already used elsewhere
     # in this batch, but remember the first otherwise-valid match as a
     # fallback in case every qualifying candidate shares that same cuisine —
@@ -134,6 +162,8 @@ async def search_recipe_pool(
         if row["main_protein"] and row["main_protein"] in profile.dislikes:
             continue
         if _has_allergen_conflict(row["ingredients"], profile.allergies):
+            continue
+        if (row["title"] or "").lower() in avoid_titles_lower:
             continue
         if (1 - row["distance"]) < threshold:
             continue

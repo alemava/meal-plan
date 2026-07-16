@@ -167,6 +167,9 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .meal-card-type{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
 .meal-card-ttl{font-size:.92rem;font-weight:600;color:var(--txt);line-height:1.3}
 .meal-card-meta{font-size:.76rem;color:var(--mut)}
+.gen-opt{position:relative}
+.gen-opt-discard{position:absolute;top:6px;right:6px;border:none;background:none;color:var(--hnt);font-size:.85rem;cursor:pointer;padding:6px;line-height:1;border-radius:8px;-webkit-tap-highlight-color:transparent;z-index:1}
+.gen-opt-discard:hover{color:var(--txt);background:var(--srf)}
 
 .bnav{position:fixed;bottom:0;left:0;right:0;background:var(--wht);border-top:1px solid var(--brd);display:flex;z-index:100;height:62px;padding:6px 10px 8px}
 .bnb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent;color:var(--hnt);border-radius:12px;margin:0 3px;transition:background .15s}
@@ -239,6 +242,9 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .pill::before{content:"·";color:var(--hnt);margin-right:8px;font-weight:700}
 .pill:first-child::before{display:none}
 .pill.wk{color:var(--acc);font-weight:600}
+.servings-btn{background:var(--srf);border:1px solid var(--brd2);border-radius:50%;width:18px;height:18px;line-height:16px;text-align:center;font-size:.8rem;font-weight:700;color:var(--txt);cursor:pointer;padding:0;flex-shrink:0}
+.servings-btn:disabled{opacity:.4;cursor:default}
+.servings-btn:active:not(:disabled){background:var(--acc);border-color:var(--acc);color:#fff}
 .rhero{margin:-18px -18px 16px;position:relative;line-height:0}
 .rhero img{display:block;width:100%;aspect-ratio:2/1;object-fit:cover}
 .rhero-grad{position:absolute;inset:40% 0 0 0;background:linear-gradient(to bottom,transparent,rgba(18,10,4,.78));pointer-events:none}
@@ -547,6 +553,7 @@ var ANON = _prod ? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 // ── Supabase Auth client + session ───────────────────────────────
 var sb = supabase.createClient(SB, ANON);
 var currentAccessToken = null; // updated by onAuthStateChange; null = not logged in
+var currentUserId = null; // updated by onAuthStateChange; null = not logged in
 
 // ── mesa AI backend (Phase 4) ────────────────────────────────────
 // Dev-only for now — there is no prod Cloud Run deploy yet, so the
@@ -630,13 +637,27 @@ async function sbFetch(path, opts) {
 // existing render function can keep reading meal.title/.ingredients/.steps/
 // .image_url exactly as before. `avail` (week-specific "already have this")
 // gets applied onto the hydrated ingredients by matching ingredient name.
+// Mirrors backend/app/services/scaling.py's SCALING_EXPONENTS exactly — kept
+// in sync by hand, since hydrateMeals is the only place ingredient quantities
+// are (re)computed for display; the server-side scaling in select_recipe.py
+// is transient (response-only) and never persisted, so the client has to
+// redo this math on every rehydrate anyway.
+var SCALING_EXPONENTS = { linear: 1.0, seasoning: 0.8, heat: 0.65, fixed: 0.0 };
+
+function scaleIngredientQty(ing, ratio) {
+  if (ing.scaling === 'fixed') return ing.qty;
+  var exponent = SCALING_EXPONENTS[ing.scaling];
+  if (exponent == null) exponent = SCALING_EXPONENTS.linear;
+  return Math.round(ing.qty * Math.pow(ratio, exponent) * 100) / 100;
+}
+
 async function hydrateMeals(weeks) {
   var ids = new Set();
   weeks.forEach(function(w) {
     (w.meals || []).forEach(function(m) { if (m.recipe_id) ids.add(m.recipe_id); });
   });
   if (!ids.size) return;
-  var recipes = await sbFetch('/rest/v1/recipes?id=in.(' + Array.from(ids).join(',') + ')&select=id,title,ingredients,steps,image_url,image_prompt,base_serves');
+  var recipes = await sbFetch('/rest/v1/recipes?id=in.(' + Array.from(ids).join(',') + ')&select=id,title,ingredients,steps,image_url,image_prompt,base_serves,kcal');
   var byId = {};
   recipes.forEach(function(r) { byId[r.id] = r; });
   weeks.forEach(function(w) {
@@ -644,14 +665,25 @@ async function hydrateMeals(weeks) {
       var r = byId[m.recipe_id];
       if (!r) return;
       var availSet = new Set(m.avail || []);
+      var baseServes = r.base_serves || 2;
+      if (m.people == null) m.people = baseServes;
+      var ratio = m.people / baseServes;
       m.title        = r.title;
       m.image_url    = r.image_url;
       m.image_prompt = r.image_prompt;
       m.steps        = r.steps;
       m.ingredients  = (r.ingredients || []).map(function(ing) {
-        return Object.assign({}, ing, { avail: availSet.has(ing.name) });
+        return Object.assign({}, ing, {
+          avail: availSet.has(ing.name),
+          qty: scaleIngredientQty(ing, ratio),
+        });
       });
-      if (m.people == null) m.people = r.base_serves;
+      // kcal is the total for the WHOLE recipe as written (confirmed in
+      // generation_rules.py), scaled linearly with people — same total-food
+      // intuition as the "linear" ingredient category, not a per-ingredient
+      // energy breakdown (that math only exists server-side, in
+      // recipe_audit.py, for plausibility auditing, not for real display).
+      if (r.kcal) m.kcal = Math.round(r.kcal * ratio);
     });
   });
 }
@@ -664,8 +696,10 @@ var G = {
   dayLabel: null,       // weekday shown in the day-pill strip (e.g. 'Tuesday')
   planSubView: 'overview', // 'overview' | 'recipe' — which screen the plan tab shows
   shopState: {},
+  weekPantry: [], // this week's pantry list, from week_pantry — see loadWeek/buildShopBuckets
   favSet: new Set(),
   reactionMap: {},      // meal_id → 'fav'|'like'|'dislike' for current week
+  genDiscarded: new Set(), // option ids discarded from the CURRENT gen job's view — see discardOption()
   timers: {},
   observers: {},        // IntersectionObservers keyed by timer key
   view: 'plan',
@@ -903,6 +937,7 @@ function playLoginTransition() {
 
 sb.auth.onAuthStateChange(function(_event, session) {
   currentAccessToken = session ? session.access_token : null;
+  currentUserId = session ? session.user.id : null;
   if (session) {
     var freshLogin = (_event === 'SIGNED_IN') && !_appBooted;
     showAppShell();
@@ -1526,7 +1561,8 @@ async function loadWeek(id) {
     var results = await Promise.all([
       sbFetch('/rest/v1/meal_weeks?id=eq.' + encodeURIComponent(id) + '&select=*'),
       sbFetch('/rest/v1/shopping_state?week_id=eq.' + encodeURIComponent(id) + '&select=state'),
-      sbFetch('/rest/v1/favourites?week_id=eq.' + encodeURIComponent(id) + '&select=meal_id,reaction')
+      sbFetch('/rest/v1/favourites?week_id=eq.' + encodeURIComponent(id) + '&select=meal_id,reaction'),
+      sbFetch('/rest/v1/week_pantry?week_id=eq.' + encodeURIComponent(id) + '&select=pantry')
     ]);
 
     var weekArr = results[0];
@@ -1537,6 +1573,7 @@ async function loadWeek(id) {
     G.week = weekArr[0];
     await hydrateMeals([G.week]);
     G.shopState = (results[1] && results[1][0] && results[1][0].state) || {};
+    G.weekPantry = (results[3] && results[3][0] && results[3][0].pantry) || [];
     G.reactionMap = {};
     (results[2] || []).forEach(function(f) { G.reactionMap[f.meal_id] = f.reaction || 'fav'; });
     G.favSet = new Set(Object.keys(G.reactionMap).filter(function(k) { return G.reactionMap[k] === 'fav'; }));
@@ -1593,7 +1630,7 @@ function renderDayNav(week) {
     html += '<button class="wnb gen-tab" id="wnb-gen" onclick="showGenerateView()">✨ Generate</button>';
   }
   if (!G.isPast) {
-    var tobuyCount = buildShopBuckets(meals, G.shopState).tobuy.length;
+    var tobuyCount = buildShopBuckets(meals, G.shopState, G.weekPantry).tobuy.length;
     html += '<button class="wnb shop-tab" id="wnb-shop" data-tour="shopping-tab" onclick="showShop()">🛒 Shopping<span class="shop-count">' + tobuyCount + '</span></button>';
   }
 
@@ -1662,6 +1699,7 @@ function showGenerateView() {
   if (!G.genComments) G.genComments = {breakfast: '', lunch: '', dinner: ''};
   if (!G.genMaxTime) G.genMaxTime = {breakfast: 10, lunch: 30, dinner: 45};
   if (!G.genPeople) G.genPeople = 2;
+  if (G.genPantry == null) G.genPantry = '';
   if (!G.genAssignments) G.genAssignments = {};
   renderGenerateForm();
   maybeResumeLastGenJob();
@@ -1684,6 +1722,10 @@ function renderGenerateForm() {
     + '<div class="day-sub">How many of each meal do you want this batch? mesa suggests two options for each — pick which recipe goes on which day below, all on this screen.</div>'
     + '<div class="gen-form"><label>People eating<input type="number" min="1" max="12" value="' + G.genPeople
     +   '" oninput="G.genPeople=parseInt(this.value)||2" style="width:56px"></label></div>'
+    + '<div class="gen-form"><label>Ingredients you already have (optional, one per line)'
+    +   '<textarea maxlength="1000" rows="3" placeholder="500g rice&#10;2 avocados&#10;chicken breast" '
+    +   'oninput="G.genPantry=this.value" style="width:100%;font:inherit;padding:8px">' + esc(G.genPantry) + '</textarea>'
+    +   '</label></div>'
     + rows
     + '<button class="gen-go" onclick="runGenerateRecipes()">Generate options</button>'
     + '<div id="gen-results"></div>'
@@ -1703,6 +1745,23 @@ function renderGenerateForm() {
 // runGenerateRecipes).
 function applyGenerationResult(data) {
   if (data.week_id) G.week.id = data.week_id;
+  // Persist the pantry list actually sent for this batch — but only once
+  // per job, and only once the real week_id is known (this function reruns
+  // on every poll tick as slots trickle in). week_id isn't known upfront:
+  // the frontend never computes the backend's week_id_for() format itself,
+  // it just waits for the first response to say what it is. week_pantry is
+  // its own dedicated table (not on meal_weeks) specifically so this write
+  // can never trip meal_weeks_insert_notify's unconditional "week ready"
+  // email trigger — see CLAUDE.md.
+  if (data.week_id && G._pendingPantryUpsert) {
+    var pantryToSave = G._pendingPantryUpsert;
+    G._pendingPantryUpsert = null;
+    sbFetch('/rest/v1/week_pantry', {
+      method: 'POST',
+      headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify({week_id: data.week_id, user_id: currentUserId, pantry: pantryToSave, updated_at: new Date().toISOString()})
+    }).catch(function(){});
+  }
   var pooled = {};
   (data.slots || []).forEach(function(slot) {
     if (!pooled[slot.meal_type]) pooled[slot.meal_type] = [];
@@ -1828,6 +1887,20 @@ async function maybeResumeLastGenJob() {
   try { stored = JSON.parse(raw); } catch (e) { localStorage.removeItem('mesa-last-gen-job'); return; }
   if (!stored || !stored.id || (Date.now() - stored.at) > GEN_RESUME_MAX_AGE_MS) return;
 
+  // Hydrate discards from a PRIOR poll/resume of this exact job (e.g. this
+  // browser tab reloaded) — only if they belong to this same job id, so a
+  // stale discard from a past batch can never carry over (harmless either
+  // way, since discarded recipes are excluded server-side from generation
+  // itself, but keeps the client-side set from growing unbounded).
+  try {
+    var storedDiscarded = JSON.parse(localStorage.getItem('mesa-gen-discarded') || 'null');
+    G.genDiscarded = (storedDiscarded && storedDiscarded.jobId === stored.id)
+      ? new Set(storedDiscarded.ids)
+      : new Set();
+  } catch (e) {
+    G.genDiscarded = new Set();
+  }
+
   G.genActiveJobId = stored.id;
   try {
     var status = await apiFetch('/api/generate-recipes/' + stored.id);
@@ -1857,6 +1930,31 @@ async function maybeResumeLastGenJob() {
   }
 }
 
+// Lightweight, forgiving line parser for the pantry textarea — not a
+// guardrail (guardrails.sanitize_pantry_ingredients on the backend is the
+// real content check), just a best-effort split of "500g rice" into
+// {name, qty, unit} so the model gets a structured hint instead of a raw
+// blob of text. A line with no leading number (e.g. "chicken breast") is
+// still sent, just with qty/unit null.
+function parsePantryLine(line) {
+  line = line.trim();
+  if (!line) return null;
+  var m = line.match(/^(\d+(?:[.,]\d+)?)\s*([a-zA-Z]+)?\s*(.*)$/);
+  if (!m || !m[1]) return { name: line, qty: null, unit: null };
+  var qty = parseFloat(m[1].replace(',', '.')) || null;
+  var unit = m[2] || null;
+  var rest = (m[3] || '').trim();
+  // No text after the unit-looking word means that word was actually the
+  // item name (e.g. "2 avocados" has no real unit, just a count + noun).
+  if (!rest && unit) { rest = unit; unit = null; }
+  if (!rest) return null;
+  return { name: rest, qty: qty, unit: unit };
+}
+
+function parsePantryText(text) {
+  return (text || '').split('\n').map(parsePantryLine).filter(Boolean);
+}
+
 async function runGenerateRecipes() {
   // Synchronous, before any await — immediately invalidates any poll/resume
   // loop still running for a previous job (both check this after every
@@ -1871,6 +1969,8 @@ async function runGenerateRecipes() {
   G.genResults = {};
   G.genAssignments = {};
   G.genProgress = null;
+  G.genDiscarded = new Set();
+  localStorage.removeItem('mesa-gen-discarded');
 
   var dayCodes = ['mon','tue','wed','thu','fri','sat','sun'];
   var slots = [];
@@ -1894,9 +1994,12 @@ async function runGenerateRecipes() {
   }
 
   try {
+    var pantry = parsePantryText(G.genPantry);
+    G._pendingPantryUpsert = pantry.length ? pantry : null;
     var accepted = await apiFetch('/api/generate-recipes', {method:'POST', body: JSON.stringify({
       week_start: G.week.week_start,
-      slots: slots
+      slots: slots,
+      pantry: pantry.length ? pantry : undefined
     })});
     // Never cleared on completion — reopening Generate later re-shows these
     // results (maybeResumeLastGenJob); superseded by the next batch, the
@@ -1936,8 +2039,8 @@ function renderGenerateResults() {
   };
 
   var sections = GEN_MEAL_TYPES.map(function(mt) {
-    var opts = G.genResults[mt];
-    if (!opts || !opts.length) return '';
+    var opts = (G.genResults[mt] || []).filter(function(o) { return !G.genDiscarded.has(o.id); });
+    if (!opts.length) return '';
     var cards = opts.map(function(opt) {
       var img = opt.image_url
         ? '<img class="meal-card-img" src="' + esc(opt.image_url) + '" alt="" loading="lazy">'
@@ -1946,13 +2049,28 @@ function renderGenerateResults() {
       if (opt.time) estMeta.push('⏱ ' + esc(opt.time));
       if (opt.kcal) estMeta.push('🔥 ' + esc(opt.kcal) + ' kcal');
       var assignedDay = G.genAssignments[opt.id];
+      var ingList = '';
+      if (opt.ingredients && opt.ingredients.length) {
+        ingList = '<ul style="list-style:none;padding:0;margin:6px 0 0">' + opt.ingredients.map(function(ing) {
+          return '<li style="display:flex;gap:8px;padding:4px 0;font-size:.82rem;color:var(--txt)">'
+            + '<span style="color:var(--mut);flex-shrink:0">•</span>'
+            + '<span>' + esc(ing.name)
+            + (ing.qty ? ' <span style="font-weight:400;color:var(--mut)">' + esc(fmtQtyUnit(ing)) + '</span>' : '')
+            + '</span></li>';
+        }).join('') + '</ul>';
+      }
+      var discardBtn = assignedDay ? '' : (
+        '<button class="gen-opt-discard" onclick="event.stopPropagation();discardOption(\'' + esc(opt.id) + '\',\'' + mt + '\')" aria-label="Not interested" title="Don\'t show this again">✕</button>'
+      );
       return '<div class="meal-card gen-opt">'
+        + discardBtn
         + img
         + '<div class="meal-card-body">'
         + '<div class="meal-card-type">' + (opt.status === 'complete' ? 'From your recipe pool' : 'New idea') + '</div>'
         + '<div class="meal-card-ttl">' + esc(opt.title) + '</div>'
         + '<div class="meal-card-meta">' + esc(opt.brief_description) + '</div>'
         + (estMeta.length ? '<div class="meal-card-meta">' + estMeta.join(' · ') + '</div>' : '')
+        + ingList
         + '<div style="margin-top:8px">' + dayButtons(opt, mt) + '</div>'
         + (assignedDay ? '<div class="meal-card-meta" style="color:var(--acc);font-weight:600;margin-top:4px">Added to ' + esc(_CODE_TO_DAY[assignedDay]) + ' ✓</div>' : '')
         + '</div></div>';
@@ -2007,6 +2125,32 @@ async function assignOptionToDay(recipeId, day, mealType) {
     renderDayNav(G.week);
   } catch(e) {
     alert('Couldn\'t save that pick: ' + e.message);
+  }
+}
+
+// "Don't show this again" — 2026-07-16, replaces treating "shown but not
+// picked" as an automatic 28-day exclusion (the real cause of a heavily-
+// tested account accumulating 163 stale "avoid repeating" titles). This is
+// the explicit, permanent signal instead: /api/discard-recipe excludes it
+// from every future generation for this user, server-side. Client-side,
+// G.genDiscarded just hides the card for the rest of THIS job's view —
+// necessary because applyGenerationResult wholesale-replaces G.genResults
+// on every poll tick / resume, so a plain DOM removal alone wouldn't stick.
+// No replacement option is fetched — the user can always generate a fresh
+// batch for more choices.
+async function discardOption(recipeId, mealType) {
+  G.genDiscarded.add(recipeId);
+  localStorage.setItem('mesa-gen-discarded', JSON.stringify({
+    jobId: G.genActiveJobId,
+    ids: Array.from(G.genDiscarded)
+  }));
+  renderGenerateResults();
+  try {
+    await apiFetch('/api/discard-recipe', {method:'POST', body: JSON.stringify({recipe_id: recipeId})});
+  } catch(e) {
+    // Already hidden client-side for this session regardless — a failed
+    // server call just means it may resurface in a FUTURE batch, not this
+    // one. Not worth an alert for a low-stakes "don't show me this" action.
   }
 }
 
@@ -2128,8 +2272,18 @@ function renderRecipe(meal) {
   // pills
   html += '<div class="rmeta">';
   if (meal.time)   html += '<span class="pill">⏱ ' + esc(meal.time) + '</span>';
-  if (meal.kcal)   html += '<span class="pill">🔥 ' + esc(meal.kcal) + ' kcal</span>';
-  if (meal.people) html += '<span class="pill">👥 ' + esc(meal.people) + ' ' + (meal.people === 1 ? 'person' : 'people') + '</span>';
+  if (meal.kcal)   html += '<span class="pill" id="kcal-pill">🔥 ' + esc(meal.kcal) + ' kcal</span>';
+  if (meal.people) {
+    if (!G.isPast && !G.isLibView) {
+      html += '<span class="pill">'
+        + '<button class="servings-btn" id="servings-dec" onclick="changeServings(\'' + esc(meal.id) + '\',-1)" aria-label="Fewer servings">−</button>'
+        + '<span id="servings-count">👥 ' + esc(meal.people) + ' ' + (meal.people === 1 ? 'person' : 'people') + '</span>'
+        + '<button class="servings-btn" id="servings-inc" onclick="changeServings(\'' + esc(meal.id) + '\',1)" aria-label="More servings">+</button>'
+        + '</span>';
+    } else {
+      html += '<span class="pill">👥 ' + esc(meal.people) + ' ' + (meal.people === 1 ? 'person' : 'people') + '</span>';
+    }
+  }
   html += '</div>';
 
   // Start cooking CTA — only on devices that support the Wake Lock API
@@ -2242,6 +2396,60 @@ function renderRecipe(meal) {
   html += '</div>';
 
   return html;
+}
+
+// Debounced +/- servings stepper (Q3). Optimistic count update per tap so
+// rapid taps feel instant; only the SETTLED value (after a pause) actually
+// goes to the server — sending one PATCH per tap would race against itself
+// (PATCH /api/meal-servings has no ordering guarantee across concurrent
+// requests), and a debounce sidesteps that entirely rather than needing any
+// server-side sequencing. G._pendingServings tracks the not-yet-sent target
+// per meal across taps; G._servingsTimer is the single in-flight debounce
+// timer (one stepper visible at a time, so one timer is enough).
+var _servingsTimer = null;
+var _pendingServings = {};
+
+function changeServings(mealId, delta) {
+  var meal = (G.week.meals || []).find(function(m) { return m.id === mealId; });
+  if (!meal) return;
+  var current = _pendingServings[mealId] != null ? _pendingServings[mealId] : meal.people;
+  var next = Math.max(1, Math.min(20, current + delta));
+  _pendingServings[mealId] = next;
+
+  var countEl = document.getElementById('servings-count');
+  if (countEl) countEl.textContent = '👥 ' + next + ' ' + (next === 1 ? 'person' : 'people');
+
+  if (_servingsTimer) clearTimeout(_servingsTimer);
+  _servingsTimer = setTimeout(function() { _commitServings(mealId); }, 600);
+}
+
+async function _commitServings(mealId) {
+  var meal = (G.week.meals || []).find(function(m) { return m.id === mealId; });
+  var next = _pendingServings[mealId];
+  delete _pendingServings[mealId];
+  if (!meal || next == null || next === meal.people) return;
+
+  var dec = document.getElementById('servings-dec');
+  var inc = document.getElementById('servings-inc');
+  if (dec) dec.disabled = true;
+  if (inc) inc.disabled = true;
+
+  try {
+    await apiFetch('/api/meal-servings', {
+      method: 'PATCH',
+      body: JSON.stringify({ week_id: G.week.id, meal_id: mealId, people: next })
+    });
+    meal.people = next;
+    await hydrateMeals([G.week]);
+    if (G.day === mealId) showDay(mealId);
+  } catch (e) {
+    var countEl = document.getElementById('servings-count');
+    if (countEl) countEl.textContent = '👥 ' + meal.people + ' ' + (meal.people === 1 ? 'person' : 'people');
+    alert('Could not update servings — please try again.');
+  } finally {
+    if (dec) dec.disabled = false;
+    if (inc) inc.disabled = false;
+  }
 }
 
 // ── Timer icon SVGs ──────────────────────────────────────────────
@@ -2678,6 +2886,19 @@ function sumQtys(qtys) {
   return (Number.isInteger(t) ? String(t) : t.toString()) + (unit ? ' ' + unit : '');
 }
 
+// Raw {qty, unit} sum (unlike sumQtys, works for a single entry too, and
+// returns a number instead of a display string) — used only for the pantry
+// shortfall math below, where even one recipe's need must be comparable
+// against the pantry. Same honest-degradation rule as sumQtys: null the
+// moment units disagree, no unit-conversion system exists anywhere in mesa.
+function _sumQtyRaw(qtys) {
+  if (!qtys || !qtys.length) return null;
+  var unit = (qtys[0].unit || '').toLowerCase().trim();
+  if (!qtys.every(function(q) { return (q.unit || '').toLowerCase().trim() === unit; })) return null;
+  var total = qtys.reduce(function(acc, q) { return acc + (parseFloat(q.qty) || 0); }, 0);
+  return { qty: Math.round(total * 100) / 100, unit: unit };
+}
+
 // ── Shopping list ────────────────────────────────────────────────
 function showShop() {
   setNavActive('shop');
@@ -2687,7 +2908,7 @@ function showShop() {
 
 // Build the unified ingredient map and tobuy/avail/bought buckets, shared
 // between the shopping list itself and the day-nav badge count.
-function buildShopBuckets(meals, shopState) {
+function buildShopBuckets(meals, shopState, pantry) {
   // build unified ingredient map: key → {name, meals:[], avail, qtys:[]}
   var map = {};
   meals.forEach(function(meal) {
@@ -2702,17 +2923,45 @@ function buildShopBuckets(meals, shopState) {
     });
   });
 
+  // Pantry shortfall (Q2) — the rice example this shipped for: 500g on hand,
+  // two recipes needing 300g each (600g total) -> 500g covered, 100g to buy.
+  // Only computed when every recipe's need for this key AND the pantry entry
+  // itself share one exact unit (same honest-degradation rule as sumQtys —
+  // no unit-conversion system exists in mesa). A pantry line typed with no
+  // quantity (just a bare name) can't offset anything numerically here; it
+  // still reached the generation prompt as a hint, which is its whole job.
+  var pantryByKey = {};
+  (pantry || []).forEach(function(p) {
+    if (p.qty == null) return;
+    var k = ingKey(p.name);
+    (pantryByKey[k] || (pantryByKey[k] = [])).push({ qty: p.qty, unit: p.unit || '' });
+  });
+  Object.keys(map).forEach(function(k) {
+    var item = map[k];
+    var needed = _sumQtyRaw(item.qtys);
+    var have = pantryByKey[k] ? _sumQtyRaw(pantryByKey[k]) : null;
+    if (needed && have && needed.unit === have.unit) {
+      item.pantryCoverage = {
+        needed: needed.qty,
+        haveQty: have.qty,
+        toBuy: Math.max(0, Math.round((needed.qty - have.qty) * 100) / 100),
+        unit: needed.unit,
+      };
+    }
+  });
+
   // resolve display status for each key
   // an ingredient can appear in both tobuy AND avail if it has mixed avail values across recipes
   var avail = [], tobuy = [], bought = [];
   Object.keys(map).forEach(function(k) {
     var item = map[k];
     var st = shopState[k];
+    var fullyCovered = item.pantryCoverage && item.pantryCoverage.toBuy <= 0;
     if (st === 'bought') {
       bought.push({key: k, item: item});
     } else {
-      if (item.needsBuying) tobuy.push({key: k, item: item});
-      if (item.avail || st === 'avail') avail.push({key: k, item: item});
+      if (item.needsBuying && !fullyCovered) tobuy.push({key: k, item: item});
+      if (item.avail || st === 'avail' || fullyCovered) avail.push({key: k, item: item});
     }
   });
 
@@ -2721,7 +2970,7 @@ function buildShopBuckets(meals, shopState) {
 
 function renderShopList(week) {
   var meals = week.meals || [];
-  var buckets = buildShopBuckets(meals, G.shopState);
+  var buckets = buildShopBuckets(meals, G.shopState, G.weekPantry);
   var avail = buckets.avail, tobuy = buckets.tobuy, bought = buckets.bought;
 
   // count unique ingredients; mixed items (in both tobuy + avail) count once as not-done
@@ -2740,7 +2989,19 @@ function renderShopList(week) {
       var qtys = (qtysField && entry.item[qtysField] && entry.item[qtysField].length ? entry.item[qtysField] : null) || entry.item.qtys || [];
       var qtyHtml = '';
       var fmtQ = function(q) { return q.qty + (q.unit ? ' ' + q.unit : ''); };
-      if (qtys.length === 1) {
+      // Pantry coverage (Q2) only makes sense to call out in "To buy" — once
+      // bought or already marked avail, the shortfall number isn't relevant
+      // anymore. Falls through to the existing plain breakdown whenever
+      // coverage isn't computable (no pantry entry, or a unit mismatch).
+      var cov = (cls === 'tobuy') ? entry.item.pantryCoverage : null;
+      if (cov) {
+        var covDetail = qtys.length > 1
+          ? qtys.length + ' recipes: ' + qtys.map(function(q) { return esc(fmtQ(q)); }).join(' + ')
+          : (qtys.length === 1 ? esc(fmtQ(qtys[0])) : '');
+        qtyHtml = ' <span class="sn-qty-line"><b>' + esc(fmtQ({qty: cov.toBuy, unit: cov.unit})) + ' to buy</b>'
+          + ' · ' + esc(fmtQ({qty: cov.haveQty, unit: cov.unit})) + ' on hand'
+          + (covDetail ? ' · ' + covDetail : '') + '</span>';
+      } else if (qtys.length === 1) {
         qtyHtml = ' <span class="sn-qty-line">' + esc(fmtQ(qtys[0])) + '</span>';
       } else if (qtys.length > 1) {
         var total   = sumQtys(qtys);
@@ -2814,7 +3075,12 @@ async function persistShopState() {
     await sbFetch('/rest/v1/shopping_state', {
       method: 'POST',
       headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'},
-      body: JSON.stringify({week_id: G.week.id, state: G.shopState, updated_at: new Date().toISOString()})
+      // user_id is required by shopping_state's RLS insert policy (and the
+      // column itself is NOT NULL, no default) — found live during Q2
+      // research: this call had never included it, so every "bought" tick
+      // was silently failing to save (shopping_state had zero rows for any
+      // user), invisibly, because the catch below swallows the error.
+      body: JSON.stringify({week_id: G.week.id, user_id: currentUserId, state: G.shopState, updated_at: new Date().toISOString()})
     });
   } catch(e) {
     console.warn('Shopping state save failed:', e.message);
@@ -3143,7 +3409,12 @@ async function setReaction(mealId, reaction) {
     } else if (!prev) {
       await sbFetch('/rest/v1/favourites', {
         method: 'POST', headers: {'Prefer': 'return=minimal'},
-        body: JSON.stringify({ id: id, meal_id: mealId, week_id: G.week.id, week_title: G.week.title, meal: meal, reaction: next })
+        // user_id found missing live during Q2 research — favourites.user_id
+        // is nullable (unlike shopping_state's), so this never errored, but
+        // every row landed with user_id=NULL, permanently invisible under
+        // RLS's `user_id = auth.uid()` to any real user — a silent-success
+        // bug rather than a silent-failure one, same root cause either way.
+        body: JSON.stringify({ id: id, user_id: currentUserId, meal_id: mealId, week_id: G.week.id, week_title: G.week.title, meal: meal, reaction: next })
       });
     } else {
       await sbFetch('/rest/v1/favourites?id=eq.' + encodeURIComponent(id), {

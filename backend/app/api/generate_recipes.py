@@ -60,12 +60,20 @@ async def generate_recipes(
     monday = guardrails.normalise_to_monday(request.week_start)
     await check_and_record_generation(user_id, guardrails.week_id_for(monday))
 
+    # Sanitized ONCE, here, before it's ever persisted — the worker
+    # (internal.py) reads generation_jobs.pantry back as plain dicts (already
+    # jsonb-decoded), not PantryItem objects, so this is the only point where
+    # guardrails.sanitize_pantry_ingredients's PantryItem-shaped input is
+    # actually available.
+    pantry = guardrails.sanitize_pantry_ingredients(request.pantry)
+
     row = await db.pool().fetchrow(
-        "INSERT INTO generation_jobs (user_id, week_start, slots_request) "
-        "VALUES ($1, $2, $3::jsonb) RETURNING id",
+        "INSERT INTO generation_jobs (user_id, week_start, slots_request, pantry) "
+        "VALUES ($1, $2, $3::jsonb, $4::jsonb) RETURNING id",
         user_id,
         monday,
         [s.model_dump(mode="json") for s in request.slots],
+        pantry,
     )
     job_id = str(row["id"])
     # Deliberately NOT swallowed (unlike select_recipe.py's steps-generation
@@ -155,6 +163,7 @@ async def _run_generation(
     slots: list[SlotRequest],
     already_complete: dict[int, list[dict]] | None = None,
     on_slot_complete: OnSlotComplete | None = None,
+    pantry: list[dict] | None = None,
 ) -> GenerateRecipesResponse:
     """The actual generation pipeline — same logic as before this file's
     async refactor, just extracted out of the route handler so both the
@@ -175,13 +184,19 @@ async def _run_generation(
     # history and extending it after each slot reuses the exact same
     # "avoid repeating" prompt mechanism for batch-level variety too.
     #
-    # Seeded from BOTH get_user_history (selected meals) AND
-    # get_recently_suggested_titles (shown but maybe never selected) — the
-    # exact-title guardrail and "avoid repeating" instruction previously only
-    # knew about selected meals, so a dish shown one day but never picked
-    # could be regenerated verbatim the next day with nothing catching it
-    # (seen live: the identical title, freshly generated 24h apart).
+    # Seeded from get_user_history (selected meals), get_discarded_titles
+    # (explicitly told "don't show me this again"), AND get_recently_
+    # suggested_titles (shown in the last 7 days — see history.
+    # RECENTLY_SHOWN_WINDOW_DAYS). That last one used to be a 28-day window
+    # covering ANYTHING shown, diagnosed live as the real cause of a heavily-
+    # tested account accumulating 163 "avoid repeating" titles — removed for
+    # that reason, then partially reinstated (at 7 days, not 28) hours later
+    # after a live regression: with zero short-term dedup, a fresh
+    # generation independently repeated the exact same dish twice within 34
+    # seconds across two separate requests, since nothing told the model it
+    # had just suggested that title. Discards stay permanent and separate.
     batch_history = list(await history.get_user_history(user_id))
+    batch_history.extend(await history.get_discarded_titles(user_id))
     batch_history.extend(await history.get_recently_suggested_titles(user_id))
 
     used_recipe_ids: set[str] = set()
@@ -241,6 +256,7 @@ async def _run_generation(
                     comment,
                     slot.max_time_minutes,
                     used_cuisines,
+                    pantry,
                 )
             except Exception as exc:
                 failed_slots.append((idx, repr(exc)))
@@ -283,6 +299,7 @@ async def _generate_options_for_slot(
     comment: str | None = None,
     max_time_minutes: int | None = None,
     used_cuisines: list[str] | None = None,
+    pantry: list[dict] | None = None,
 ) -> list[dict]:
     """ADR 2 fallbacks: no qualifying pool match -> both fresh; generation
     fails / cost kill-switch hit -> two pool recipes.
@@ -304,9 +321,16 @@ async def _generate_options_for_slot(
     # slot's own second option also avoids repeating the first one's cuisine
     # — not just cuisines from earlier slots in the batch.
     used_cuisines = list(used_cuisines or [])
+    # 2026-07-16: pool matching only ever excluded by exact recipe id, so two
+    # DIFFERENT rows sharing a title (e.g. two separately-created "Pollo al
+    # Ajillo" recipes from past sessions) could both surface in the same
+    # multi-slot batch — a real bug seen live. avoid_titles closes it; same
+    # title source (recent_history) fresh generation already uses for its
+    # own "avoid repeating" prompt/guardrail.
+    avoid_titles = {h["title"] for h in recent_history if h.get("title")}
 
     pool_option = await pool_search.search_recipe_pool(
-        user_profile, meal_type, exclude_ids, used_cuisines=used_cuisines
+        user_profile, meal_type, exclude_ids, used_cuisines=used_cuisines, avoid_titles=avoid_titles
     )
     if pool_option and pool_option["status"] == "stub":
         try:
@@ -329,6 +353,7 @@ async def _generate_options_for_slot(
             meal_type,
             exclude_ids | {str(pool_option["id"])},
             used_cuisines=used_cuisines + ([pool_option["cuisine"]] if pool_option.get("cuisine") else []),
+            avoid_titles=avoid_titles | {pool_option["title"]},
         )
         if second_pool_option and second_pool_option["status"] == "stub":
             try:
@@ -364,6 +389,7 @@ async def _generate_options_for_slot(
             comment=comment,
             max_time_minutes=max_time_minutes,
             used_cuisines=used_cuisines,
+            pantry=pantry,
         )
     except AIProviderExhausted:
         generation_failed = True
@@ -389,6 +415,7 @@ async def _generate_options_for_slot(
                 comment=comment,
                 max_time_minutes=max_time_minutes,
                 used_cuisines=used_cuisines,
+                pantry=pantry,
             )
         except AIProviderExhausted:
             pass
@@ -418,6 +445,7 @@ async def _generate_options_for_slot(
             exclude_ids | {str(o["id"]) for o in options},
             used_cuisines,
             2 - len(options),
+            avoid_titles=avoid_titles | {o["title"] for o in options},
         )
 
     # Image-text sync rule: ONLY freshly-generated options ever get a
@@ -446,19 +474,22 @@ async def _pool_fill(
     exclude_ids: set[str],
     used_cuisines: list[str],
     needed: int,
+    avoid_titles: set[str] | None = None,
 ) -> list[dict]:
     """Degraded-mode fallback when AI generation couldn't fill a slot (both
     providers exhausted/erroring): walk the pool with progressively relaxed
     constraints instead of leaving the slot short or empty. Allergen/dislike
-    filters and the 60-day "actually used" exclusion are NEVER relaxed —
-    only the 28-day "recently shown" window, the similarity threshold, and
-    the preferred-cuisine filter loosen, one rung at a time, only as far as
-    needed. include_stubs=False on every rung: a stub needs a live AI call
-    to expand, which is exactly what's unavailable here.
+    filters, the 60-day "actually used" exclusion, the explicit-discard
+    exclusion, and avoid_titles are NEVER relaxed — only the 7-day "recently
+    shown" window, the similarity threshold, and the preferred-cuisine
+    filter loosen, one rung at a time, only as far as needed. include_stubs=
+    False on every rung: a stub needs a live AI call to expand, which is
+    exactly what's unavailable here.
     """
     filled: list[dict] = []
     excluded = set(exclude_ids)
     cuisines = list(used_cuisines)
+    titles = set(avoid_titles or set())
     for rung in _POOL_FILL_RUNGS:
         if len(filled) >= needed:
             break
@@ -468,6 +499,7 @@ async def _pool_fill(
                 meal_type,
                 excluded,
                 used_cuisines=cuisines,
+                avoid_titles=titles,
                 include_stubs=False,
                 **rung,
             )
@@ -475,18 +507,26 @@ async def _pool_fill(
                 break
             filled.append(candidate)
             excluded.add(str(candidate["id"]))
+            titles.add(candidate["title"])
             if candidate.get("cuisine"):
                 cuisines.append(candidate["cuisine"])
     return filled
 
 
 async def _log_suggestions(user_id: str, options: list[dict]) -> None:
-    """Per-user, 4-week no-repeat (history.SUGGESTION_REPETITION_WINDOW_DAYS):
-    logs every option actually SHOWN, whether selected or not — a thin pool
-    otherwise keeps resurfacing the same recipe as an option indefinitely,
-    since the existing recently-used exclusion only fires on actual
-    selection. Applies to fresh options too, since they become pool
-    candidates for future searches the moment they're persisted."""
+    """Logs every option actually SHOWN, whether selected or not.
+
+    2026-07-16: this powered a 28-day "don't re-show anything shown
+    recently" exclusion (history.get_recently_suggested_*) — removed same
+    day, since treating "shown" as "rejected" was the real cause of a
+    heavily-tested account accumulating 163 stale "avoid repeating" titles
+    (see history.get_discarded_recipe_ids/get_discarded_titles, the
+    permanent explicit signal that replaced it for that purpose). Hours
+    later, get_recently_suggested_* came back reading this same table, now
+    with a 7-day window (history.RECENTLY_SHOWN_WINDOW_DAYS) — a short
+    session-scoped cooldown against immediate repeats (a live regression:
+    the same fresh-generated dish twice in 34 seconds, nothing having ever
+    signalled "you just showed this"), not the old blanket multi-week ban."""
     for option in options:
         await db.pool().execute(
             "INSERT INTO recipe_suggestions (user_id, recipe_id) VALUES ($1, $2)",

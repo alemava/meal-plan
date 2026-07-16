@@ -24,9 +24,21 @@ class SlotRequest(BaseModel):
     max_time_minutes: int | None = Field(default=None, ge=5, le=480)
 
 
+class PantryItem(BaseModel):
+    name: str
+    qty: float | None = Field(default=None, gt=0)
+    unit: str | None = None
+
+
 class GenerateRecipesRequest(BaseModel):
     week_start: date
     slots: list[SlotRequest]
+    # Household-level, not per-slot (a real pantry item like rice can cover
+    # any meal that uses it) — see guardrails.sanitize_pantry_ingredients for
+    # the content filter and fresh_generation.py for how it reaches the
+    # prompt. Capped at 40 like slots' own list fields, generous for a real
+    # kitchen inventory without inviting an abuse-sized payload.
+    pantry: list[PantryItem] | None = Field(default=None, max_length=40)
 
 
 class SlotOptions(BaseModel):

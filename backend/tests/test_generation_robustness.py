@@ -152,35 +152,59 @@ async def test_pool_fill_stops_as_soon_as_needed_is_reached(monkeypatch):
     # Every call must have run in degraded mode (never a stub — a stub needs
     # a live AI call to expand, exactly what's unavailable here).
     assert all(c.get("include_stubs") is False for c in calls)
-    # Both picks came from rung 1 (no relaxation kwargs set) — rung 2 was
-    # never reached.
-    assert all(not c.get("relax_suggested") for c in calls)
+    # Both picks came from rung 1 (no relaxation kwargs beyond include_stubs/
+    # avoid_titles, which _pool_fill always passes) — rung 2 was never reached.
+    assert all(set(c) <= {"include_stubs", "avoid_titles"} for c in calls)
 
 
 @pytest.mark.asyncio
 async def test_pool_fill_escalates_through_rungs_when_earlier_ones_are_dry(monkeypatch):
-    """Rung 1 and rung 2 return nothing; rung 3 (relaxed similarity) finally
-    finds a candidate — the ladder must have tried rungs in order, not
-    jumped straight to the end."""
+    """Rungs 1-3 return nothing; rung 4 (relaxed suggested + similarity +
+    cuisine, all three) finally finds a candidate — the ladder must have
+    tried rungs in order, not jumped straight to the end."""
     rungs_seen = []
 
     async def fake_search(profile, meal_type, exclude_ids, used_cuisines=None, **kwargs):
-        rungs_seen.append(kwargs)
-        if kwargs.get("min_similarity") == 0.55 and not kwargs.get("any_cuisine"):
-            return _option("found-at-rung3")
+        # avoid_titles is the SAME mutable set object on every call (_pool_fill
+        # adds to it in place as picks are made) — snapshot its contents now,
+        # or every entry in rungs_seen would silently show the set's FINAL
+        # state once the whole _pool_fill call finishes, not what it actually
+        # held at the time of that specific call.
+        snapshot = dict(kwargs)
+        if "avoid_titles" in snapshot:
+            snapshot["avoid_titles"] = set(snapshot["avoid_titles"])
+        rungs_seen.append(snapshot)
+        if kwargs.get("any_cuisine"):
+            return _option("found-at-rung4")
         return None
 
     monkeypatch.setattr(generate_recipes.pool_search, "search_recipe_pool", fake_search)
 
     filled = await generate_recipes._pool_fill(_FakeProfile(), "dinner", set(), [], needed=1)
 
-    assert [o["id"] for o in filled] == ["found-at-rung3"]
-    # Confirms rung order: no relaxation, then relax_suggested only, then
-    # +min_similarity, each attempted (and exhausted, returning None) before
-    # the one that actually found something.
-    assert rungs_seen[0] == {"include_stubs": False}
-    assert rungs_seen[1] == {"include_stubs": False, "relax_suggested": True}
-    assert rungs_seen[2]["min_similarity"] == 0.55
+    assert [o["id"] for o in filled] == ["found-at-rung4"]
+    # Confirms rung order: no relaxation, then +relax_suggested, then
+    # +min_similarity, then +any_cuisine, each attempted (and exhausted,
+    # returning None) before the one that actually found something.
+    assert rungs_seen[0] == {"include_stubs": False, "avoid_titles": set()}
+    assert rungs_seen[1] == {
+        "include_stubs": False,
+        "avoid_titles": set(),
+        "relax_suggested": True,
+    }
+    assert rungs_seen[2] == {
+        "include_stubs": False,
+        "avoid_titles": set(),
+        "relax_suggested": True,
+        "min_similarity": 0.55,
+    }
+    assert rungs_seen[3] == {
+        "include_stubs": False,
+        "avoid_titles": set(),
+        "relax_suggested": True,
+        "min_similarity": 0.55,
+        "any_cuisine": True,
+    }
 
 
 @pytest.mark.asyncio

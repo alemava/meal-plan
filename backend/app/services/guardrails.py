@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 
+from app.models.generate import PantryItem
 from app.services.profile import UserProfile
 
 # Non-food / dangerous substances the model must never include, regardless of
@@ -148,6 +149,31 @@ def sanitize_user_comment(comment: str | None) -> str | None:
         if term in lowered:
             return None
     return comment.strip()
+
+
+def sanitize_pantry_ingredients(pantry: list[PantryItem] | None) -> list[dict]:
+    """Per-item guardrail for the user's declared on-hand ingredients (Q1) —
+    unlike sanitize_user_comment (an optional craving, fine to drop wholesale
+    on any red flag), this is a positive-constraint list the model is meant
+    to actually honor: one bad line shouldn't cost the user their whole
+    pantry, so only the flagged item is dropped, never the entire list. Same
+    DANGEROUS_TERMS backstop already used on generated output and on the
+    per-slot comment; no exhaustive "is this really food" classifier, same
+    "skipped honestly rather than faked" precedent as pool_search.py's
+    documented pantry-matching gap.
+    """
+    if not pantry:
+        return []
+    sanitized = []
+    for item in pantry:
+        name = (item.name or "").strip()
+        if not name:
+            continue
+        lowered = name.lower()
+        if any(term in lowered for term in DANGEROUS_TERMS):
+            continue
+        sanitized.append({"name": name, "qty": item.qty, "unit": item.unit})
+    return sanitized
 
 
 def normalise_to_monday(requested: date) -> date:

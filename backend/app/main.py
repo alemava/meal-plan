@@ -5,7 +5,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
-from app.api import admin, generate_recipes, internal, select_recipe, translate_recipe, webhooks
+from app.api import (
+    admin,
+    discard_recipe,
+    generate_recipes,
+    internal,
+    meal_servings,
+    select_recipe,
+    translate_recipe,
+    webhooks,
+)
 from app.core import db
 from app.core.config import get_settings
 
@@ -49,7 +58,9 @@ async def health():
 
 app.include_router(admin.router)
 app.include_router(internal.router)
+app.include_router(discard_recipe.router)
 app.include_router(generate_recipes.router)
+app.include_router(meal_servings.router)
 app.include_router(select_recipe.router)
 app.include_router(translate_recipe.router)
 app.include_router(webhooks.router)
