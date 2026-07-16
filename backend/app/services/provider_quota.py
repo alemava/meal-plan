@@ -1,7 +1,8 @@
+import time
 from datetime import UTC, date, datetime, timedelta
 
 from app.core import db
-from app.services import resend_client
+from app.services import cloudflare, resend_client
 
 # One under OpenRouter's real limits (20/min, 1000/day) — deliberate safety
 # margin, and blocking BEFORE attempting a call (not after a 429) means a
@@ -38,11 +39,49 @@ from app.services import resend_client
 # from 6 to 25 (one-under-30, same "stay just under the real limit"
 # philosophy as OpenRouter's 19) now that the token cap is the actual
 # limiting factor for realistic traffic, not this one.
-DAILY_CAPS = {"openrouter": 999}
-PER_MINUTE_CAPS = {"openrouter": 19, "groq": 25}
+# cloudflare_text (2026-07-16) — the 2 free Cloudflare text call sites
+# (pool_warmer.py's stub descriptions, recipe_audit.py's defining-ingredient
+# check) share CF's ~10K Neurons/day free tier with image generation (see
+# cost_status.CLOUDFLARE_IMAGE_DAILY_CAP), and were completely unlogged/
+# unguarded until now — this reuses the exact same generic engine already
+# built for openrouter/groq below (can_call/is_daily_blocked/handle_blocked/
+# get_usage_report), since prompt_audit_log's `model LIKE 'provider:%'` shape
+# fits a plain-text provider identically once log_simple_call below writes
+# rows for it. Conservative round numbers, not derived from a real observed
+# ceiling like Groq's — actual nightly volume is currently ~8-30 calls, this
+# just stops a runaway loop well before it could threaten CF's shared budget.
+DAILY_CAPS = {"openrouter": 999, "cloudflare_text": 200}
+PER_MINUTE_CAPS = {"openrouter": 19, "groq": 25, "cloudflare_text": 20}
 DAILY_TOKEN_CAPS = {"groq": 95000}  # one comfortably under Groq's real 100,000 TPD cap
 PER_MINUTE_TOKEN_CAPS = {"groq": 10800}  # one comfortably under Groq's real 12,000 TPM cap
 ALERT_THRESHOLDS = [500, 900]  # informational only — never blocks anything
+
+
+async def log_simple_call(
+    provider: str,
+    purpose: str,
+    prompt_text: str,
+    completion_text: str | None,
+    latency_ms: int,
+    error: str | None,
+) -> None:
+    """ai_client._log_call's counterpart for providers outside the
+    tool-calling chat_completion loop entirely — currently just Cloudflare's
+    free generate_text (plain REST, no tool_calls, no token usage reported).
+    Same prompt_audit_log table and `provider:purpose` model format, so
+    can_call/is_daily_blocked/get_usage_report above already work unmodified
+    once these rows exist."""
+    await db.pool().execute(
+        """
+        INSERT INTO prompt_audit_log (model, prompt_text, completion_text, latency_ms, error)
+        VALUES ($1, $2, $3, $4, $5)
+        """,
+        f"{provider}:{purpose}",
+        prompt_text,
+        completion_text,
+        latency_ms,
+        error,
+    )
 
 
 async def get_daily_usage(provider: str) -> int:
@@ -218,6 +257,36 @@ async def handle_blocked(provider: str, user_id: str | None) -> None:
             today,
             provider,
         )
+
+
+async def call_cloudflare_text_with_quota(purpose: str, system_prompt: str, user_prompt: str) -> str:
+    """Shared can_call -> call -> log_simple_call wrapper for
+    cloudflare.generate_text's 2 call sites (pool_warmer.py's stub
+    descriptions, recipe_audit.py's defining-ingredient check) — both need
+    the identical dance, so it lives here once instead of duplicated in each
+    caller. Raises plain RuntimeError (not AIProviderExhausted, which is
+    scoped to ai_client's tool-calling loop — Cloudflare here is a plain
+    REST client outside it) when blocked; both callers already have a bare
+    `except Exception` at their own call site that absorbs this with zero
+    new error-handling code."""
+    if not await can_call("cloudflare_text"):
+        await handle_blocked("cloudflare_text", None)
+        raise RuntimeError("cloudflare_text: daily/per-minute cap reached")
+
+    start = time.monotonic()
+    try:
+        raw = await cloudflare.generate_text(system_prompt, user_prompt)
+    except Exception as exc:
+        await log_simple_call(
+            "cloudflare_text", purpose, user_prompt, None,
+            int((time.monotonic() - start) * 1000), str(exc),
+        )
+        raise
+    await log_simple_call(
+        "cloudflare_text", purpose, user_prompt, raw,
+        int((time.monotonic() - start) * 1000), None,
+    )
+    return raw
 
 
 async def get_usage_report() -> dict:

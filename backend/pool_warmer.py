@@ -68,7 +68,9 @@ async def _generate_one_stub(cuisine: str, meal_type: str) -> None:
     # (unlike cuisine), so a plain round-robin (see run_pool_warmer) is the
     # honest choice here rather than inventing a weighting scheme to guess.
     user_prompt = f"Invent a {cuisine} {meal_type} recipe idea."
-    raw = await cloudflare.generate_text(SYSTEM_PROMPT, user_prompt)
+    raw = await provider_quota.call_cloudflare_text_with_quota(
+        "pool_warmer_stub", SYSTEM_PROMPT, user_prompt
+    )
     idea = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
 
     row = await db.pool().fetchrow(

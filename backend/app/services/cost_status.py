@@ -22,6 +22,17 @@ SUSTAINED_QUEUE_BACKLOG_HOURS = 48
 DEEPINFRA_COST_PER_IMAGE_USD = 0.0005
 MONTHLY_DEEPINFRA_CAP_USD = 5.0
 
+# Proactive brake (2026-07-16) — image_chain.py's Cloudflare->DeepInfra chain
+# was 100% reactive until now (attempt Cloudflare, only fall back if it
+# raises). Cloudflare's response carries no per-call Neuron cost (checked:
+# cloudflare.py only ever reads image bytes or a plain error), so this counts
+# call attempts against CF's real ~10K Neurons/day free tier (shared with the
+# 2 free text call sites in provider_quota.py's cloudflare_text cap) rather
+# than real Neurons — a known simplification, not false precision. Same idea
+# as Groq's request-count cap before its token-based fix, just without a
+# metric CF actually exposes to replace it with. Conservative, tunable.
+CLOUDFLARE_IMAGE_DAILY_CAP = 300
+
 
 async def _get_flag(key: str) -> bool:
     row = await db.pool().fetchrow("SELECT value FROM system_flags WHERE key = $1", key)
@@ -45,6 +56,22 @@ async def get_generation_disabled() -> bool:
 
 async def get_image_backstop_disabled() -> bool:
     return await _get_flag("image_backstop_disabled")
+
+
+async def _today_cloudflare_image_attempts() -> int:
+    today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    return await db.pool().fetchval(
+        "SELECT count(*) FROM image_generation_log WHERE provider = 'cloudflare' AND occurred_at >= $1",
+        today_start,
+    )
+
+
+async def cloudflare_image_quota_exhausted() -> bool:
+    """image_chain.py's proactive gate — checked BEFORE calling
+    cloudflare.generate_image, not after it fails. True/False attempts both
+    count (a failed attempt still likely spent real Neurons on Cloudflare's
+    side), erring conservative rather than overcounting headroom."""
+    return await _today_cloudflare_image_attempts() >= CLOUDFLARE_IMAGE_DAILY_CAP
 
 
 async def _monthly_deepinfra_spend() -> float:
@@ -95,6 +122,7 @@ async def check_cost_status() -> dict:
     today_calls = await _today_call_count()
     image_health = await _image_provider_health()
     deepinfra_spend = await _monthly_deepinfra_spend()
+    cloudflare_image_attempts = await _today_cloudflare_image_attempts()
 
     text_over_threshold = today_calls >= DAILY_CALL_SOFT_LIMIT
     should_disable = text_over_threshold
@@ -151,4 +179,6 @@ async def check_cost_status() -> dict:
         "deepinfra_monthly_spend_usd": round(deepinfra_spend, 4),
         "deepinfra_monthly_cap_usd": MONTHLY_DEEPINFRA_CAP_USD,
         "image_provider_health": image_health,
+        "cloudflare_image_attempts_today": cloudflare_image_attempts,
+        "cloudflare_image_daily_cap": CLOUDFLARE_IMAGE_DAILY_CAP,
     }

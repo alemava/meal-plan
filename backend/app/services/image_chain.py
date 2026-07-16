@@ -26,15 +26,21 @@ async def generate_and_upload_image(
     show a placeholder — never block or fail the request over an image.
     Every attempt (success or failure) is logged here, the single call site,
     so recipe_id/user_id traceability can't be bypassed by a future direct
-    call to a provider client."""
+    call to a provider client.
+
+    Cloudflare itself is gated by a proactive daily-attempt cap (2026-07-16,
+    see cost_status.cloudflare_image_quota_exhausted) — once exhausted this
+    skips straight to the DeepInfra branch exactly as if Cloudflare had just
+    raised, without logging a Cloudflare attempt that never happened."""
     filename = f"{recipe_id}.jpg"
 
-    try:
-        image_bytes = await cloudflare.generate_image(image_prompt)
-        await _log_image_call("cloudflare", True, recipe_id, user_id)
-        return await storage.upload_recipe_image(filename, image_bytes)
-    except Exception:
-        await _log_image_call("cloudflare", False, recipe_id, user_id)
+    if not await cost_status.cloudflare_image_quota_exhausted():
+        try:
+            image_bytes = await cloudflare.generate_image(image_prompt)
+            await _log_image_call("cloudflare", True, recipe_id, user_id)
+            return await storage.upload_recipe_image(filename, image_bytes)
+        except Exception:
+            await _log_image_call("cloudflare", False, recipe_id, user_id)
 
     settings = get_settings()
     if settings.image_paid_backstop and not await cost_status.get_image_backstop_disabled():

@@ -27,7 +27,7 @@ from pydantic import ValidationError
 
 from app.core import db
 from app.models.recipes import Ingredient
-from app.services import cloudflare, provider_quality, resend_client
+from app.services import provider_quality, provider_quota, resend_client
 from app.services.guardrails import GeneratedRecipeInvalid, validate_ingredient_units
 from app.services.steps_generation import GeneratedStepsInvalid, validate_steps
 
@@ -410,10 +410,12 @@ def _filter_self_contradicting(missing: list[str], ingredient_names: list[str]) 
 
 
 async def _check_defining_ingredients(row) -> str | None:
-    """One free cloudflare.generate_text call — the detective half of the
-    defining-ingredient gap (generation_rules.DEFINING_COMPONENTS_RULE is
-    the preventive half). Raises on any provider/parse failure; the caller
-    decides whether to advance the watermark past this row."""
+    """One free cloudflare.generate_text call (via provider_quota's shared
+    quota-checked wrapper, 2026-07-16 — this call site used to bypass any
+    cap/logging entirely) — the detective half of the defining-ingredient
+    gap (generation_rules.DEFINING_COMPONENTS_RULE is the preventive half).
+    Raises on any provider/parse/quota failure; the caller decides whether
+    to advance the watermark past this row."""
     ingredients = row["ingredients"]
     if not isinstance(ingredients, list) or not ingredients:
         # Already reported by the structural scan (ingredients_not_array /
@@ -436,7 +438,9 @@ async def _check_defining_ingredients(row) -> str | None:
         'Reply with ONLY a JSON object: {"ok": true|false, "missing": ["..."]}. '
         "missing should list only genuinely dish-defining components, empty if ok is true."
     )
-    raw = await cloudflare.generate_text(SEMANTIC_SYSTEM_PROMPT, prompt)
+    raw = await provider_quota.call_cloudflare_text_with_quota(
+        "recipe_audit_defining_ingredients", SEMANTIC_SYSTEM_PROMPT, prompt
+    )
     try:
         result = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
     except (ValueError, json.JSONDecodeError):
