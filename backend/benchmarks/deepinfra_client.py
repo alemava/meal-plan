@@ -19,6 +19,18 @@ MODELS = {
     "llama-3.1-8b": "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
     "mistral-small-24b": "mistralai/Mistral-Small-24B-Instruct-2501",
     "gemma-3-27b": "google/gemma-3-27b-it",
+    # Round 2 (2026-07-15), user-requested: is there a genuinely cheaper/
+    # better DeepInfra candidate outside the original 3? Checked DeepInfra's
+    # own /v1/openai/models pricing directly (not page copy, which already
+    # proved unreliable once for Mistral Small) — every Qwen3/3.5 candidate
+    # in mesa's size range turned out to be a "reasoning"-tagged model
+    # priced ABOVE Mistral Small 24B on at least one axis, not a cheaper
+    # alternative at all. These two are the real cheap, non-reasoning finds:
+    # same price tier as Llama 3.1 8B, from a different lab/architecture
+    # each, worth a real comparison rather than assuming Mistral Small wins
+    # by default just because it won round 1.
+    "mistral-nemo-12b": "mistralai/Mistral-Nemo-Instruct-2407",
+    "phi-4": "microsoft/phi-4",
 }
 
 # Verified live against DeepInfra's own model pages, 2026-07-15 — kept here
@@ -28,6 +40,8 @@ PRICES_PER_1M = {
     "llama-3.1-8b": {"input": 0.02, "output": 0.03},
     "mistral-small-24b": {"input": 0.05, "output": 0.08},
     "gemma-3-27b": {"input": 0.08, "output": 0.16},
+    "mistral-nemo-12b": {"input": 0.02, "output": 0.04},
+    "phi-4": {"input": 0.07, "output": 0.14},
 }
 
 # Found live in R0 (2026-07-15), NOT what DeepInfra's own model page claims
@@ -35,11 +49,15 @@ PRICES_PER_1M = {
 # request against this exact model returns a clean HTTP 405 —
 # "Tool calling is not supported for model: mistralai/Mistral-Small-24B-
 # Instruct-2501" — verified via a raw curl, not a fluke of this harness.
-# Every other model here uses real structured tool-calling; this one is
-# tested via a JSON-mode adapter path instead (response_format=json_object
-# + the schema spelled out in the prompt), same as mesa's real architecture
-# would need to if this model were ever chosen.
-USES_JSON_MODE: set[str] = {"mistral-small-24b"}
+# phi-4 fails the exact same way (also verified via raw curl) — Mistral
+# Nemo, unlike its bigger Mistral Small sibling, DOES accept tools (200,
+# real tool_calls back) — tool-calling support isn't even consistent
+# within one vendor's own model lineup on this platform, so it has to be
+# checked per-model, never assumed. Models in this set use a JSON-mode
+# adapter path instead (response_format=json_object + the schema spelled
+# out in the prompt), same as mesa's real architecture would need to build
+# if one of them were ever chosen.
+USES_JSON_MODE: set[str] = {"mistral-small-24b", "phi-4"}
 
 TIMEOUT_SECONDS = 60
 
