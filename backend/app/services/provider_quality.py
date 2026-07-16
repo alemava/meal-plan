@@ -55,13 +55,13 @@ SEMANTIC_CHECKS = frozenset({"missing_defining_ingredient"})
 # deterministic numbers, honestly, rather than forcing empty tiers.
 STEPS_STAGE_CHECKS = frozenset({"steps_not_array", "step_format"})
 
-# Only the providers each comparison is actually about — cloudflare (stubs)
-# and the legacy claude/gemini seed data predate this pipeline and would
-# just be noise in a groq-vs-openrouter report. Steps generation has a tiny
-# amount of real historical groq data too (2 calls, 2026-07-10, before the
-# openrouter-only design was finalized) — kept in COMPARABLE_PROVIDERS so
-# that data isn't silently dropped, not because steps has an ongoing choice.
-COMPARABLE_PROVIDERS = ("groq", "openrouter")
+# groq/openrouter data freezes as of 2026-07-16 (both retired from the live
+# waterfall in favour of openrouter_paid/deepinfra — see ai_client.py) but
+# stays here rather than being swapped out: an implicit before/after on the
+# same report, and steps generation's tiny real historical groq slice
+# (2 calls, 2026-07-10) still shouldn't be silently dropped. openrouter_paid/
+# deepinfra are the ones with an ongoing go/no-go question now.
+COMPARABLE_PROVIDERS = ("groq", "openrouter", "openrouter_paid", "deepinfra")
 
 # Semantic check precision, measured by hand this session (2026-07-14): 6
 # "high-confidence-looking" findings individually verified against real

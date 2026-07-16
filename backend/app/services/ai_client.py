@@ -24,6 +24,19 @@ OPENROUTER_FREE_ROUTER_MODEL = "openrouter/free"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
+# Paid text tier (2026-07-16) — replaces Groq/OpenRouter-free as the live
+# waterfall after a same-day benchmark (backend/benchmarks/) found the free
+# tiers unreliable under real load. Both models verified live to reject
+# real tool-calling on both providers ("Tool calling is not supported" /
+# "No endpoints found that support tool use") but work via JSON-mode — see
+# _call_json_mode_as_tool_call below.
+OPENROUTER_PAID_MISTRAL_MODEL = "mistralai/mistral-small-24b-instruct-2501"
+OPENROUTER_PAID_PHI4_MODEL = "microsoft/phi-4"
+
+DEEPINFRA_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
+DEEPINFRA_MISTRAL_MODEL = "mistralai/Mistral-Small-24B-Instruct-2501"  # casing differs from OpenRouter's slug for the same model
+DEEPINFRA_PHI4_MODEL = "microsoft/phi-4"
+
 MAX_TOOL_LOOP_TURNS = 6
 MAX_CORRECTIVE_RETRIES = 3
 
@@ -133,6 +146,176 @@ async def _call_groq(messages: list[dict], tools: list[dict]) -> dict:
     return resp.json()
 
 
+# Hand-authored JSON-mode schema text, ported from backend/benchmarks/
+# mesa_contract.py where it was already live-verified (91.7%/100% valid on
+# mesa's real contract) — not reimplemented from scratch. Only submit_recipe
+# and submit_steps have a hand-authored version; anything else falls back
+# to _generic_schema_instruction below.
+_JSON_MODE_RECIPE_INSTRUCTION = (
+    "\n\nRespond with ONLY a single JSON object, no markdown code fences, no text before or after it. "
+    'The object must have exactly this shape: {"title": string, "brief_description": string, '
+    '"cuisine": string, "main_protein": string, "image_prompt": string, "time": string, '
+    '"kcal": integer, "ingredients": [{"name": string, "qty": number, "unit": string, '
+    '"scaling": "linear"|"seasoning"|"heat"|"fixed", "tier": "mandatory"|"recommended"|"optional", '
+    '"allergen_tags": [string]}]}. '
+    "qty must be a JSON number, never a string. unit must be metric only (g, kg, ml, l, tsp, tbsp, "
+    "or a plain count like whole/clove/slice/piece) — never imperial."
+)
+_JSON_MODE_STEPS_INSTRUCTION = (
+    "\n\nRespond with ONLY a single JSON object, no markdown code fences, no text before or after "
+    'it, shaped exactly like this: {"steps": [{"title": string, "text": string, "timers": '
+    '[{"label": string, "seconds": integer, "alertAt": integer (optional), "alertMsg": string '
+    '(required if alertAt set)}], "remaining": integer}]}. "remaining" must strictly decrease '
+    "step over step and be exactly 0 on the last step."
+)
+_JSON_MODE_INSTRUCTIONS = {
+    "submit_recipe": _JSON_MODE_RECIPE_INSTRUCTION,
+    "submit_steps": _JSON_MODE_STEPS_INSTRUCTION,
+}
+
+
+def _generic_schema_instruction(tool: dict) -> str:
+    """Fallback for a tool with no hand-authored instruction above
+    (submit_expansion, submit_translation) — dumps the tool's own JSON
+    Schema as text; its `description` fields already carry the real
+    guidance, this just conveys the shape since JSON mode has no `tools`
+    parameter to carry it structurally."""
+    params = tool["function"]["parameters"]
+    return (
+        "\n\nRespond with ONLY a single JSON object, no markdown code fences, no text before or "
+        f"after it, matching this JSON Schema: {json.dumps(params)}"
+    )
+
+
+async def _call_json_mode_as_tool_call(
+    url: str,
+    headers: dict,
+    messages: list[dict],
+    tools: list[dict],
+    model: str,
+    timeout_seconds: int = PROVIDER_CALL_TIMEOUT_SECONDS,
+) -> dict:
+    """Shared by _call_openrouter_paid/_call_deepinfra, for models that
+    reject `tools` but accept response_format=json_object. Every real
+    caller in this codebase passes exactly one tool schema (confirmed live
+    2026-07-16), so "the tool" the model must produce is unambiguous even
+    without a real tools parameter. Synthesizes the SAME message.tool_calls
+    shape a real tool-calling provider would return, with `arguments` left
+    as the RAW, unparsed content string — never pre-parsed here — so
+    run_tool_use_loop and the existing _parse_arguments/
+    _normalise_stringified_json (top-level-array recovery, nested-
+    stringified-JSON recovery) run on a synthetic call exactly as they
+    would on a real one, with zero duplicated logic and zero changes
+    needed above this function."""
+    tool_name = tools[0]["function"]["name"]
+    instruction = _JSON_MODE_INSTRUCTIONS.get(tool_name) or _generic_schema_instruction(tools[0])
+    # Copy, don't mutate — completion_fn is called once per turn with a
+    # growing `messages` list owned by run_tool_use_loop; appending to a
+    # copy each time means the instruction is added exactly once per real
+    # HTTP call, never accumulating across turns.
+    json_messages = [dict(m) for m in messages]
+    json_messages[0] = {**json_messages[0], "content": json_messages[0]["content"] + instruction}
+    payload = {"model": model, "messages": json_messages, "response_format": {"type": "json_object"}}
+    resp = await _post(url, headers, payload, timeout_seconds=timeout_seconds)
+    resp.raise_for_status()
+    envelope = resp.json()
+    message = envelope["choices"][0]["message"]
+    content = message.get("content")
+    if content:
+        # Only synthesize a tool call if the model actually produced
+        # something — empty/missing content correctly falls through to
+        # run_tool_use_loop's existing "no tool_calls -> corrective retry"
+        # path instead of a synthetic call with garbage arguments.
+        message["tool_calls"] = [
+            {
+                "id": "json_mode_call_0",
+                "type": "function",
+                "function": {"name": tool_name, "arguments": content},
+            }
+        ]
+    return envelope
+
+
+async def _call_openrouter_paid(messages: list[dict], tools: list[dict], model: str) -> dict:
+    settings = get_settings()
+    return await _call_json_mode_as_tool_call(
+        OPENROUTER_URL, {"Authorization": f"Bearer {settings.openrouter_api_key}"}, messages, tools, model
+    )
+
+
+async def _call_deepinfra(messages: list[dict], tools: list[dict], model: str) -> dict:
+    settings = get_settings()
+    return await _call_json_mode_as_tool_call(
+        DEEPINFRA_URL, {"Authorization": f"Bearer {settings.deepinfra_api_key}"}, messages, tools, model
+    )
+
+
+async def openrouter_paid_completion(
+    messages: list[dict],
+    tools: list[dict],
+    purpose: str,
+    recipe_id: str | None = None,
+    generation_request_id: str | None = None,
+) -> tuple[dict, str]:
+    """Paid OpenRouter tier — Mistral Small 24B then Phi-4, both via the
+    JSON-mode adapter (neither supports real tool-calling on OpenRouter,
+    verified live). Tries both models explicitly here (not OpenRouter's own
+    `models:` array fallback used by the old free-tier path) so every
+    attempt gets its own prompt_audit_log row on both providers equally,
+    instead of one opaque multi-model call. No capacity pre-check: OpenRouter
+    enforces its own $ balance in real-time (confirmed live via a real 403
+    once the account's credit limit was hit) and there's no free-tier
+    pacing concern for a metered provider."""
+    if not await provider_status.is_enabled("openrouter_paid"):
+        raise AIProviderExhausted("openrouter_paid disabled")
+
+    last_error: Exception | None = None
+    for model in (OPENROUTER_PAID_MISTRAL_MODEL, OPENROUTER_PAID_PHI4_MODEL):
+        start = time.monotonic()
+        try:
+            result = await _call_openrouter_paid(messages, tools, model=model)
+            await _log_call(
+                "openrouter_paid", messages, result, start, purpose, None, recipe_id, generation_request_id
+            )
+            return result, "openrouter_paid"
+        except Exception as exc:
+            last_error = exc
+            await _log_call(
+                "openrouter_paid", messages, None, start, purpose, str(exc), recipe_id, generation_request_id
+            )
+    raise AIProviderExhausted("openrouter_paid: both models failed") from last_error
+
+
+async def deepinfra_completion(
+    messages: list[dict],
+    tools: list[dict],
+    purpose: str,
+    recipe_id: str | None = None,
+    generation_request_id: str | None = None,
+) -> tuple[dict, str]:
+    """DeepInfra tier — same 2 models, same JSON-mode adapter, same
+    explicit-per-model-attempt logging as openrouter_paid_completion. No
+    free tier, pure pay-per-use, so no capacity pre-check here either."""
+    if not await provider_status.is_enabled("deepinfra"):
+        raise AIProviderExhausted("deepinfra disabled")
+
+    last_error: Exception | None = None
+    for model in (DEEPINFRA_MISTRAL_MODEL, DEEPINFRA_PHI4_MODEL):
+        start = time.monotonic()
+        try:
+            result = await _call_deepinfra(messages, tools, model=model)
+            await _log_call(
+                "deepinfra", messages, result, start, purpose, None, recipe_id, generation_request_id
+            )
+            return result, "deepinfra"
+        except Exception as exc:
+            last_error = exc
+            await _log_call(
+                "deepinfra", messages, None, start, purpose, str(exc), recipe_id, generation_request_id
+            )
+    raise AIProviderExhausted("deepinfra: both models failed") from last_error
+
+
 async def chat_completion(
     messages: list[dict],
     tools: list[dict],
@@ -140,93 +323,28 @@ async def chat_completion(
     recipe_id: str | None = None,
     generation_request_id: str | None = None,
 ) -> tuple[dict, str]:
-    """Tries Groq first, then OpenRouter (with its own 2-model fallback) as a
-    fully independent second upstream (guardrail: no BYOK routing — see the
-    OpenRouter-vs-Groq design discussion). Logs every attempt to
-    prompt_audit_log (step 20), whichever provider actually served it.
-    recipe_id/generation_request_id give per-recipe, per-request traceability —
-    recipe_id is already known for existing-recipe call sites; for brand-new
-    recipes generation_request_id lets the caller backfill recipe_id later.
+    """Tries paid OpenRouter (Mistral Small 24B, then Phi-4) first, then
+    DeepInfra (same 2 models) — replaces the Groq/OpenRouter-free waterfall
+    (2026-07-16): a same-day benchmark (backend/benchmarks/) found both free
+    tiers unreliable under real concurrent load (Groq hit its own daily
+    token cap from testing, OpenRouter free-tier had a 90%+ error rate the
+    same day), while Mistral Small 24B/Phi-4 scored 91.7%/95.8% valid on
+    mesa's real contract across two independently-verified paid providers.
+    OpenRouter goes first since there's a real prepaid credit balance to
+    spend down before DeepInfra becomes pure metered billing.
 
-    Returns (response, provider) — added 2026-07-15 after finding every
-    caller was hardcoding `source='openrouter'` regardless of which provider
-    actually answered (Groq is tried first and usually wins), making
-    per-provider quality comparisons impossible from the recipes table.
+    _call_groq/_call_openrouter/groq_only_completion/openrouter_only_completion
+    are unchanged and still used directly by the golden-set quality test —
+    this function just no longer calls them, so free-tier capability stays
+    available for diagnosis without being live traffic's fallback.
 
-    Groq is primary (not OpenRouter) — measured live: Groq's llama-3.3-70b
-    (LPU hardware, no reasoning trace) answers in ~1s vs. OpenRouter's
-    gpt-oss-120b (a reasoning model) taking ~30s for the same request. Groq
-    occasionally malforms its own tool-call syntax (a real, seen-live
-    reliability quirk), but the caller-level retry loop (fresh_generation.py's
-    MAX_GENERATION_ATTEMPTS) now actually retries on that instead of failing
-    the whole attempt, making the latency win worth the trade-off.
-
-    Both providers can also be manually disabled via provider_status.py
-    (production-readiness Part 4) — deliberately manual-only, never
-    auto-flipped by this function itself; see that module's docstring for
-    why. groq_only_completion/openrouter_only_completion deliberately do
-    NOT check this — they exist specifically to force a provider even when
-    diagnosing it (the golden-set test), so gating them the same way would
-    make a disabled provider unmeasurable right when you'd want data on it
-    most."""
-    if await provider_status.is_enabled("groq") and await _wait_for_capacity(
-        "groq", GROQ_CAPACITY_MAX_WAIT_SECONDS
-    ):
-        start = time.monotonic()
-        try:
-            result = await _call_groq(messages, tools)
-            await _log_call(
-                "groq", messages, result, start, purpose, None, recipe_id, generation_request_id
-            )
-            await provider_quota.check_and_alert("groq")
-            return result, "groq"
-        except Exception as groq_error:
-            await _log_call(
-                "groq",
-                messages,
-                None,
-                start,
-                purpose,
-                str(groq_error),
-                recipe_id,
-                generation_request_id,
-            )
-    # Either Groq is manually disabled, the call itself failed above, or the
-    # queue's wait budget ran out without a slot freeing up — either way,
-    # fall through to OpenRouter exactly as before.
-
-    if not await provider_status.is_enabled("openrouter") or not await _wait_for_capacity(
-        "openrouter", OPENROUTER_CAPACITY_MAX_WAIT_SECONDS
-    ):
-        # Manually disabled, or capacity never freed up within the wait
-        # budget (immediately, if a daily cap is the blocker) — don't spend
-        # a call attempt that's already doomed to fail (or worse, count
-        # against the real limit right as it's being hit). Skip straight to
-        # the graceful exhaustion path the caller already handles.
-        raise AIProviderExhausted("openrouter disabled or self-imposed cutoff reached")
-
-    start = time.monotonic()
+    If both new tiers fail, this raises AIProviderExhausted exactly as
+    before — the existing graceful "chef is busy" user-facing path needs no
+    changes."""
     try:
-        result = await _call_openrouter(
-            messages, tools, fallback_models=[OPENROUTER_FALLBACK_MODEL]
-        )
-        await _log_call(
-            "openrouter", messages, result, start, purpose, None, recipe_id, generation_request_id
-        )
-        await provider_quota.check_and_alert("openrouter")
-        return result, "openrouter"
-    except Exception as openrouter_error:
-        await _log_call(
-            "openrouter",
-            messages,
-            None,
-            start,
-            purpose,
-            str(openrouter_error),
-            recipe_id,
-            generation_request_id,
-        )
-        raise AIProviderExhausted from openrouter_error
+        return await openrouter_paid_completion(messages, tools, purpose, recipe_id, generation_request_id)
+    except AIProviderExhausted:
+        return await deepinfra_completion(messages, tools, purpose, recipe_id, generation_request_id)
 
 
 async def openrouter_only_completion(

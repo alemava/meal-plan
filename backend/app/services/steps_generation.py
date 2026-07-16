@@ -194,7 +194,6 @@ async def generate_steps(recipe: dict) -> tuple[list[dict], str]:
         purpose="select_recipe_steps",
         final_tool_name="submit_steps",
         recipe_id=str(recipe["id"]),
-        completion_fn=ai_client.openrouter_only_completion,
     )
 
     steps = result["steps"]

@@ -1,5 +1,4 @@
 from app.core import db
-from app.core.config import get_settings
 from app.services import ai_client
 from app.services.steps_generation import sanitize_step_text
 
@@ -57,7 +56,7 @@ async def get_or_create_translation(recipe_id: str, language: str) -> dict:
     if recipe is None:
         raise ValueError("Recipe not found")
 
-    translated = await _translate(recipe, language, recipe_id)
+    translated, provider = await _translate(recipe, language, recipe_id)
 
     await db.pool().execute(
         """
@@ -70,12 +69,12 @@ async def get_or_create_translation(recipe_id: str, language: str) -> dict:
         translated["title"],
         translated["ingredients"],
         translated["steps"],
-        f"ai:{get_settings().ai_provider}",
+        f"ai:{provider}",
     )
     return translated
 
 
-async def _translate(recipe: dict, language: str, recipe_id: str) -> dict:
+async def _translate(recipe: dict, language: str, recipe_id: str) -> tuple[dict, str]:
     ingredients = recipe["ingredients"] or []
     steps = recipe["steps"] or []
     ingredient_names = [i["name"] for i in ingredients]
@@ -91,7 +90,7 @@ async def _translate(recipe: dict, language: str, recipe_id: str) -> dict:
         f"Translate the title, ingredient names (same order), and steps into {language}."
     )
 
-    result, _provider = await ai_client.run_tool_use_loop(
+    result, provider = await ai_client.run_tool_use_loop(
         system_prompt,
         user_prompt,
         TRANSLATE_TOOLS,
@@ -124,4 +123,4 @@ async def _translate(recipe: dict, language: str, recipe_id: str) -> dict:
         "title": result["title"],
         "ingredients": translated_ingredients,
         "steps": translated_steps,
-    }
+    }, provider

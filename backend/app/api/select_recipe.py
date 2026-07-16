@@ -4,7 +4,7 @@ from app.core import db
 from app.core.security import get_current_user_id
 from app.models.recipes import Ingredient
 from app.models.select import SelectRecipeRequest, SelectRecipeResponse
-from app.services import cloud_tasks, guardrails, provider_quota, scaling
+from app.services import cloud_tasks, guardrails, provider_quota, provider_status, scaling
 from app.services.profile import load_profile
 
 router = APIRouter(prefix="/api", tags=["recipes"])
@@ -79,9 +79,17 @@ async def _kick_off_steps_generation(recipe_id: str, user_id: str) -> str:
     status before steps existed, which could strand a recipe 'complete'
     with no steps if generation failed mid-flight — no longer applicable
     since the worker only flips status after steps are actually written."""
-    busy = not await provider_quota.can_call("openrouter")
+    # Steps generation runs through ai_client.chat_completion's default
+    # waterfall (openrouter_paid -> deepinfra, both metered/paid, 2026-07-16)
+    # — neither has a self-imposed quota cap to check (see provider_quota.py:
+    # no free-tier pacing concern for a metered provider), so the only real
+    # predictive signal left is whether both are manually disabled.
+    busy = not (
+        await provider_status.is_enabled("openrouter_paid")
+        or await provider_status.is_enabled("deepinfra")
+    )
     if busy:
-        await provider_quota.handle_blocked("openrouter", user_id)
+        await provider_quota.handle_blocked("openrouter_paid", user_id)
 
     try:
         await cloud_tasks.enqueue_steps_generation(recipe_id, user_id)

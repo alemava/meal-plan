@@ -55,7 +55,7 @@ class GeneratedRecipeInvalid(Exception):
 # historical unit sweep had already run and closed).
 ALLOWED_UNITS: frozenset[str] = frozenset(
     {
-        "g", "kg", "ml", "l", "tsp", "tbsp", "cup", "cups",
+        "g", "kg", "ml", "l", "tsp", "tbsp", "tbs", "cup", "cups",
         "whole", "clove", "cloves", "piece", "pieces", "slice", "slices",
         "can", "bunch", "handful", "head", "leaf", "leaves", "pinch",
         "wedge", "wedges", "sprig", "sprigs", "stalk", "stalks",

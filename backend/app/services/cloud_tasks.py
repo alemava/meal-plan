@@ -46,7 +46,10 @@ async def enqueue_steps_generation(recipe_id: str, user_id: str) -> None:
                 },
                 "body": base64.b64encode(body).decode(),
             },
-            "dispatchDeadline": "540s",  # headroom above ASYNC_WORKER_TIMEOUT_SECONDS
+            "dispatchDeadline": "540s",  # headroom above Cloud Run's own 300s request timeout,
+            # which is the real bound here — generate_steps_task has no asyncio.wait_for of
+            # its own (2026-07-16: steps generation moved off the old, longer-budgeted
+            # openrouter_only_completion path onto the default chat_completion waterfall)
         }
     }
 

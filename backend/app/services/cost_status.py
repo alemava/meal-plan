@@ -4,9 +4,11 @@ from app.core import db
 from app.core.config import get_settings
 from app.services import resend_client
 
-# Tunable, not measured — OpenRouter (50/day) + Groq (1000/day) give ~1050
-# combined text calls/day of real headroom; this is a conservative early
-# warning well before that ceiling, not a hard technical limit.
+# Sanity/runaway-loop guard, not a free-tier capacity warning (2026-07-16):
+# text generation moved to a paid-by-default waterfall (openrouter_paid ->
+# deepinfra, see ai_client.py) with no free-tier ceiling left to protect.
+# 700/day is just a "this looks like unexpectedly heavy usage, go check"
+# tripwire now — tune freely, it isn't measuring anything real anymore.
 DAILY_CALL_SOFT_LIMIT = 700
 
 # Step 27's sporadic-vs-sustained split for the image provider chain.
@@ -104,8 +106,10 @@ async def check_cost_status() -> dict:
             "mesa: AI generation disabled — daily call threshold reached",
             f"<p>Today's AI text calls ({today_calls}) reached the soft limit "
             f"({DAILY_CALL_SOFT_LIMIT}). Generation is now disabled until reset.</p>"
-            "<p>To raise capacity: set <code>TEXT_PAID_MODE=true</code> after topping up "
-            "OpenRouter credit ($10 one-time = 1000 req/day), or investigate usage.</p>",
+            "<p>Text generation is paid-by-default now (openrouter_paid/deepinfra) — this "
+            "threshold is a runaway-loop tripwire, not a capacity ceiling. Check "
+            "prompt_audit_log for what's driving the volume, or raise "
+            "DAILY_CALL_SOFT_LIMIT in cost_status.py if this was expected usage.</p>",
         )
     elif not should_disable and currently_disabled:
         await _set_flag("generation_disabled", False)
