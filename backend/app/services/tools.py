@@ -50,7 +50,15 @@ TOOL_SCHEMAS = [
                     "brief_description": {"type": "string"},
                     "cuisine": {"type": "string"},
                     "main_protein": {"type": "string"},
-                    "image_prompt": {"type": "string"},
+                    "image_prompt": {
+                        "type": "string",
+                        "description": (
+                            "Describe how the finished plated dish visually looks — colours, "
+                            "textures, garnish, vessel, style — never just the dish name (bad: "
+                            "'Beef Quesadillas'). End with ', close-up food photography, warm "
+                            "natural light, appetizing'."
+                        ),
+                    },
                     "time": {
                         "type": "string",
                         "description": "Total estimated time, e.g. '25 min'. A real estimate, not a placeholder.",

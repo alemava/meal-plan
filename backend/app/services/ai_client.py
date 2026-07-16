@@ -159,7 +159,14 @@ _JSON_MODE_RECIPE_INSTRUCTION = (
     '"scaling": "linear"|"seasoning"|"heat"|"fixed", "tier": "mandatory"|"recommended"|"optional", '
     '"allergen_tags": [string]}]}. '
     "qty must be a JSON number, never a string. unit must be metric only (g, kg, ml, l, tsp, tbsp, "
-    "or a plain count like whole/clove/slice/piece) — never imperial."
+    "or a plain count like whole/clove/slice/piece) — never imperial. "
+    "image_prompt must describe how the FINISHED PLATED DISH visually looks — colours, textures, "
+    "garnish, vessel, style — never just the dish name or a one-line ingredient list (bad: 'Beef "
+    "Quesadillas'; good: 'Two golden crispy quesadilla wedges on a wooden board, melted cheddar and "
+    "seasoned beef visible at the cut edge, chunky guacamole and sour cream on the side'). It must "
+    "genuinely depict what makes THIS specific dish visually recognizable as itself, not a generic "
+    "plate of its main ingredient. End it with exactly ', close-up food photography, warm natural "
+    "light, appetizing'."
 )
 _JSON_MODE_STEPS_INSTRUCTION = (
     "\n\nRespond with ONLY a single JSON object, no markdown code fences, no text before or after "
