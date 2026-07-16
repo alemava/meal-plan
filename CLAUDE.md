@@ -111,14 +111,73 @@ itself lives in `public.recipes`, looked up by `recipe_id`). Fields on the refer
 itself are **week-instance data** — things that are true for this specific week for
 this specific user, never true of the recipe in general:
 
-- `avail` (array of ingredient names, optional) — which of this recipe's ingredients
-  the user already has on hand *this week*. Must exactly match an ingredient `name`
-  in the recipe's `ingredients` array (case-sensitive). Never put `avail` data on the
-  shared recipe itself — the same dish can be fully stocked one week and not the next.
+- `avail` (array of ingredient names, optional) — **deprecated**, superseded by
+  `week_pantry` below. Always written as `[]` by `select_recipe.py` and never
+  populated by any other code path (front or back end) — confirmed dead in
+  practice during Phase 4's pantry-quantity work. Still present in the schema
+  for backward compatibility; not the mechanism to build on.
 - `meal_type` (`'breakfast'|'lunch'|'dinner'|'special'`, optional) — defaults to being
   treated as a regular dinner-style slot if omitted.
 - `remaining` (array of free-text strings, optional) — human-readable leftover notes
   for the shopping list, not tied to a specific ingredient name.
+- `people` (int) — servings for this specific meal instance. Changeable after
+  assignment via `PATCH /api/meal-servings` (`app/api/meal_servings.py`) — the
+  frontend's `hydrateMeals` re-derives scaled ingredient quantities and kcal
+  from canonical `recipes` data against this value on every load, so changing
+  it is the only write this endpoint needs to do.
+
+### `week_pantry` — quantity-aware pantry, per user per week
+
+```sql
+CREATE TABLE week_pantry (
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  week_id text NOT NULL,
+  pantry jsonb NOT NULL DEFAULT '[]',  -- [{name, qty, unit}, ...]
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, week_id)
+);
+```
+
+A **dedicated table, deliberately not a `meal_weeks.pantry` column** —
+`meal_weeks` has a live `meal_weeks_insert_notify` trigger that fires the
+"your week is ready" email on **any** INSERT, unconditionally, with no
+WHERE/WHEN clause. Pantry is saved at *generation* time, before any real
+selection exists (the normal, first-insert state for a new week) — piggybacking
+on `meal_weeks` would send a false "ready" email with zero meals. `week_pantry`
+mirrors `shopping_state`'s role (auxiliary per-week data, its own table, written
+directly from the frontend via `sbFetch` + RLS, no backend endpoint needed).
+
+Threaded into generation via `generation_jobs.pantry` (sanitized once, in the
+`POST /api/generate-recipes` route handler, via
+`guardrails.sanitize_pantry_ingredients`) — the Cloud Tasks worker
+(`app/api/internal.py`) reads it back out of the job row and passes it to
+`_run_generation`, since `_run_generation` is only ever invoked from the
+worker, never directly from the route. `fresh_generation.py`'s system prompt
+includes it as DATA ("the user has these on hand..."), explicitly subordinate
+to the dish-authenticity rule — a hint that narrows which real dish to pick,
+never license to invent one or drop a defining ingredient.
+
+Shopping-list coverage math (`buildShopBuckets` in `index.html`) matches a
+pantry entry to recipe ingredient need by the same `ingKey()` normalization,
+computed only when both share one exact unit (no unit-conversion system
+exists) — e.g. 500g on hand against two recipes needing 300g each shows 500g
+covered, 100g to buy. A fully-covered ingredient moves into "Already have"
+entirely, same as the (now-deprecated) `avail` mechanism was meant to.
+
+### Frontend writes needing `user_id` explicitly
+
+`shopping_state` and `favourites` are written directly from `index.html` via
+`sbFetch` (RLS-protected, no backend endpoint). Both **require `user_id` in
+the POST body** — there is no column default or trigger that populates it.
+A real bug found live (2026-07-16): both write paths omitted it, so
+`shopping_state` inserts failed the NOT NULL constraint silently (the calling
+code's `catch` swallowed the error — the table had **zero rows**, ever,
+for any user) and `favourites` inserts succeeded with `user_id = NULL`
+(nullable there), permanently invisible under RLS. Fixed by capturing
+`session.user.id` into a `currentUserId` global (alongside the existing
+`currentAccessToken`) in `onAuthStateChange`, and including it explicitly in
+both write bodies. Any *new* direct-from-frontend write to an RLS-protected
+table must include `user_id` explicitly — never assume it's populated for you.
 
 ## Backend jsonb columns — never pre-serialize
 
@@ -152,3 +211,50 @@ SET meals = (
 )
 WHERE id = '<week_id>';
 ```
+
+## Next chapter (MVP is closed — this is what comes after)
+
+The AI backend (Phase 4) is complete and verified against **dev** only. Prod
+(`alemava.github.io` / `vcluruaueetktctdyplh`) still serves the old, pre-AI,
+single-tenant app. In priority order:
+
+1. **Prod cutover — the big one.**
+   - Replay all `backend/` migrations against prod (currently only 3 tables:
+     `favourites`, `meal_weeks`, `shopping_state` — dev has 48+ migrations of
+     schema on top of that). **Caution**: prod's `meal_weeks` rows predate
+     the `recipe_id`-reference schema (recipes used to be embedded inline as
+     full JSON, per `HANDOVER.md` item 1) — any data migration written for
+     dev's already-migrated shape must be dry-run against prod's real rows
+     first, not assumed compatible.
+   - Deploy the backend as a prod Cloud Run service using the `*_PROD`
+     credentials already present in `.env` (`DATABASE_URL_PROD`,
+     `SUPABASE_URL_PROD`, `SUPABASE_SERVICE_KEY_PROD`,
+     `SUPABASE_JWT_SECRET_PROD`) — currently unused, dev-only ones are live.
+   - Flip the `BACKEND` constant in `index.html` (~line 558) so the prod
+     host stops resolving to `null` and points at the new prod service.
+   - Storage RLS parity: prod's `recipe-images` bucket still accepts the
+     anon key for writes (dev already locked this down to admin-only — see
+     "Uploading to Supabase Storage" above). Apply the same fix to prod
+     during cutover, not before (no images are generated against prod yet).
+   - Rewrite the "Updating the meal in Supabase" section above once prod is
+     on the new schema — it currently patches embedded JSON, which won't
+     exist anymore (see `HANDOVER.md` item 5 for the exact rewrite needed).
+2. **Design pass on the AI generation screens** (generate form + suggestion
+   cards) via Claude Design's `/design`/`/design-sync` — deliberately done
+   *after* the pantry UI shipped, not before, so the form is designed once
+   against its final control set, not twice. See the closeout plan for the
+   step-by-step handoff (extract standalone preview files first — mesa has
+   no component-file library today, `DesignSync` expects one).
+3. Smaller, deferred items: `recipe_discards`'s RLS-disabled state was found
+   and fixed 2026-07-17 (owner-scoped SELECT/INSERT policies); the
+   `notify_meal_ready()` trigger function's public EXECUTE grant (via the
+   `PUBLIC` pseudo-role, not `anon`/`authenticated` directly) was revoked the
+   same day. Still open: `pg_net` extension living in the `public` schema
+   (cosmetic, Supabase advisor WARN); a "the amount needed for X increased
+   since you marked it bought" nudge for the shopping list (pre-existing
+   ambiguity, made more visible by real pantry quantities, never a blocker);
+   unit conversion in shopping-list math (today: exact-unit match only);
+   tier filtering (recommended/optional ingredients) on rehydrate.
+4. Business verification (Google OAuth consent screen, Facebook app review)
+   before any real public launch beyond a handful of test users — see
+   `HANDOVER.md` item 8. Not urgent while testing solo/with a few people.
