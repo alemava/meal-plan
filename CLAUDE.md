@@ -45,23 +45,27 @@ a generated UUID with no human-chosen component.
 
 ## Recipe image generation
 
-Model: `@cf/black-forest-labs/flux-1-schnell` (Phase 4 decision, 2026-07-08 — replaces
-`@cf/leonardo/phoenix-1.0`). Originally intended to match Pollinations' fallback model
-too for style consistency, but Pollinations' live model roster (`image.pollinations.ai/
-models`) turned out to be just `["sana"]`, not Flux — so that cross-provider consistency
-isn't actually achievable; Flux was kept on the Cloudflare side anyway on its own merits.  
-Dimensions: `1024 × 512` (2:1, matches CSS `aspect-ratio: 2/1` exactly)  
-Response: **JSON with base64** (`{"result": {"image": "<base64>"}}`), not raw bytes —
-this model has no width/height parameter at all, so the backend (`app/services/
-cloudflare.py`) centre-crops the decoded image to 2:1 itself, measuring the actual
-returned dimensions at runtime rather than assuming a fixed native size.
+Model: `@cf/black-forest-labs/flux-2-klein-9b` (bumped 2026-07-20 from
+`flux-1-schnell` after a same-day model shootout — see `backend/benchmarks/` and the
+model-audit artifact — found it visibly more realistic at comparable latency; DeepInfra's
+`black-forest-labs/FLUX-2-klein-9b` was switched the same day, so both links in the
+image provider chain now use the same model). Native size `1024×1024` on Cloudflare.  
+Dimensions: `1024 × 512` (2:1, matches CSS `aspect-ratio: 2/1` exactly) on DeepInfra;
+Cloudflare's endpoint has no width/height parameter, so the backend
+(`app/services/cloudflare.py`) centre-crops the decoded image to 2:1 itself, measuring
+the actual returned dimensions at runtime rather than assuming a fixed native size.  
+Response: **JSON with base64** (`{"result": {"image": "<base64>"}}`), not raw bytes.  
+Request: **`multipart/form-data`**, not plain JSON — a bare JSON POST returns
+`"required properties at '/' are 'multipart'"` (confirmed via Cloudflare's own
+`ai/models/schema` endpoint). flux-1-schnell (the old model) accepted plain JSON;
+this one doesn't.
 
 ```bash
 curl -s -X POST \
-  "https://api.cloudflare.com/client/v4/accounts/5790e6bb8b193165d6ce7707fc5e8b39/ai/run/@cf/black-forest-labs/flux-1-schnell" \
+  "https://api.cloudflare.com/client/v4/accounts/5790e6bb8b193165d6ce7707fc5e8b39/ai/run/@cf/black-forest-labs/flux-2-klein-9b" \
   -H "Authorization: Bearer <CLOUDFLARE_API_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "<visual_prompt>", "steps": 4}' \
+  -F "prompt=<visual_prompt>" \
+  -F "steps=4" \
   | python3 -c "import sys,json,base64; open('/tmp/<week-id>-<meal-id>.jpg','wb').write(base64.b64decode(json.load(sys.stdin)['result']['image']))"
 ```
 
@@ -76,6 +80,24 @@ Append `, close-up food photography, warm natural light, appetizing` to every pr
 
 **Bad:** `"Beef Quesadillas"`  
 **Good:** `"Two golden crispy quesadilla wedges on a wooden board, melted cheddar and seasoned beef visible at the cut edge, chunky guacamole and sour cream on the side, close-up food photography, warm natural light, appetizing"`
+
+**"False friend" dish names** — if the title commonly means a *different* food in
+English/international usage (e.g. Spanish tortilla = an egg-and-potato omelette, not
+a Mexican flour tortilla wrap/flatbread), explicitly rule out the wrong reading inside
+the prompt itself. Real bug found live (2026-07-18): "Tortilla de Patatas con
+Aceitunas"'s image rendered as a wrap, because the prompt described the dish
+accurately but never said the word "tortilla" doesn't mean wrap here — the image
+model has no other way to know.  
+**Bad:** `"A golden-brown, thick tortilla cut into wedges, revealing layers of soft potatoes, onions, and black olives..."`  
+**Good:** `"A thick Spanish potato omelette (an egg dish, NOT a flatbread or wrap), sliced into wedges, revealing layers of soft potatoes, onions, and black olives..."`
+
+**Send the title alongside the prompt, always** — the backend's own
+`image_chain.generate_and_upload_image` does this automatically now (prepends
+`title + ". " + image_prompt` before calling the image provider, the one call site
+every image request goes through), as a second, deterministic layer of disambiguation
+that doesn't depend on the model remembering to write it into the prompt text itself.
+Do the same by hand if generating manually — prepend the recipe title to
+`<visual_prompt>` in the curl call below.
 
 ### Uploading to Supabase Storage
 Bucket: `recipe-images`  

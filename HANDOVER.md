@@ -164,3 +164,21 @@ Caught a real mistake in how item 13 was "verified": my first attempt to confirm
 **Copy update:** headline "Welcome to the table" → "Your week, already planned" (both the desktop brand-panel and mobile-only headline elements — they show the same text in different layout contexts). Third value-prop bullet "Step-by-step cook mode with timers" → "Personalised to how you eat". First two bullets and everything else unchanged.
 
 SW bumped to v93.
+
+---
+
+## 15. Onboarding TODO — capture country of residence for breakfast cultural fit (ROADMAP ITEM)
+
+**Motivating case (2026-07-19):** a test profile with `cuisines: ["italian","spanish","asian"]` got "Congee with Pork and Ginger" as a breakfast suggestion. Investigated and confirmed this was NOT a rule violation — congee genuinely is a traditional Asian breakfast, and the profile does list Asian cuisine. The suggestion was authentic; it was just surprising, because `cuisines` means "cuisines I enjoy eating" (mostly a dinner/lunch signal), not "my own breakfast culture" — and there's no field anywhere that captures the latter.
+
+**When onboarding is built:** capture country of residence / home food culture as its own signal, separate from `cuisines`, and thread it into `fresh_generation.py`'s breakfast prompt as the anchor for cultural fit — letting breakfast suggestions lean toward the user's actual home culture by default, while `cuisines` keeps driving lunch/dinner variety and can still override breakfast explicitly via the craving note. Interim mitigation shipped now (see `generation_rules.py`'s `BREAKFAST_AUTHENTICITY_RULE`): when a profile's `cuisines` span multiple, very different breakfast traditions, default to a broadly-recognized/European-style breakfast over one highly specific to a single distant tradition, unless the user's own note asks for it — a stopgap default, not a real fix, since it still has no idea which cuisine (if any) is actually the user's home culture.
+
+Complements the already-deferred country-availability ingredient filter noted in `pool_search.py`'s docstring — both are onboarding-time signals the app doesn't collect yet.
+
+---
+
+## 16. Assign a past recipe directly to the current/next week (ROADMAP ITEM, deferred by user request, 2026-07-20)
+
+Today the only way to get a recipe from your recipe library (favourites/past recipes list) back into an actual week is to generate a fresh batch and hope it resurfaces via the pool, or use `find_oldest_repeat_candidates`'s last-resort ladder — there is no direct "put this specific past recipe onto Monday dinner" action from the library view itself.
+
+**When this is built:** a picker action from the recipes list (probably a "+ add to week" button per recipe card) that lets the user pick a target week (current or next) and a day/meal_type slot, then calls the existing `/api/select-recipe` endpoint directly with that `recipe_id` — no new backend endpoint needed, `select_recipe.py` already accepts any `recipe_id` regardless of how it was surfaced. The real work is entirely frontend: a week-picker + day/meal_type-slot picker UI reachable from the library, plus handling the case where the target slot is already occupied (same `genDayTaken`-style conflict check the generation-results screen already has). Ties into item 15's `find_oldest_repeat_candidates` design (2026-07-19) — that already established "a user-requested repeat from history is a legitimate, first-class pick," this would just make it a deliberate action instead of an automatic last resort.

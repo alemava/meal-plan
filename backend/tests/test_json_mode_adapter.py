@@ -114,12 +114,15 @@ async def test_generic_schema_instruction_used_for_unknown_tool(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_openrouter_paid_falls_through_mistral_to_phi4_on_failure(monkeypatch, db_pool):
+async def test_openrouter_paid_falls_through_phi4_to_mistral_on_failure(monkeypatch, db_pool):
+    # Order flipped 2026-07-19 (latency pass): Phi-4 is now first (measured
+    # ~2x faster AND the benchmark's validity winner), Mistral is the
+    # same-provider fallback.
     call_models = []
 
     async def fake_post(url, headers, payload, timeout_seconds=30):
         call_models.append(payload["model"])
-        if payload["model"] == ai_client.OPENROUTER_PAID_MISTRAL_MODEL:
+        if payload["model"] == ai_client.OPENROUTER_PAID_PHI4_MODEL:
             return _FakeResponse(500, {"error": "boom"})
         return _FakeResponse(200, _envelope(json.dumps({"title": "ok"})))
 
@@ -130,7 +133,7 @@ async def test_openrouter_paid_falls_through_mistral_to_phi4_on_failure(monkeypa
         purpose="test",
     )
     assert provider == "openrouter_paid"
-    assert call_models == [ai_client.OPENROUTER_PAID_MISTRAL_MODEL, ai_client.OPENROUTER_PAID_PHI4_MODEL]
+    assert call_models == [ai_client.OPENROUTER_PAID_PHI4_MODEL, ai_client.OPENROUTER_PAID_MISTRAL_MODEL]
 
 
 @pytest.mark.asyncio

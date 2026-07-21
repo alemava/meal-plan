@@ -22,6 +22,14 @@ class SlotRequest(BaseModel):
     # critical, so no rejection/retry if the model's own time estimate
     # comes back a bit over.
     max_time_minutes: int | None = Field(default=None, ge=5, le=480)
+    # 2026-07-20, user-requested: the first 3 breakfast slots in a batch
+    # always cover one fixed category each (yogurt/toast/eggs) rather than
+    # free variety — the frontend assigns this per slot index (see
+    # index.html's slot-building loop); a 4th+ breakfast slot leaves this
+    # unset for normal unconstrained generation. Soft preference like
+    # max_time_minutes above, not a hard guardrail — see
+    # generate_recipes.py's BREAKFAST_CATEGORY_KEYWORDS.
+    breakfast_category: Literal["yogurt", "toast", "eggs"] | None = None
 
 
 class PantryItem(BaseModel):

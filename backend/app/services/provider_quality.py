@@ -45,7 +45,7 @@ DETERMINISTIC_CHECKS = frozenset(
     }
 )
 HEURISTIC_CHECKS = frozenset({"kcal_implausible", "kcal_out_of_range", "kcal_suspiciously_round"})
-SEMANTIC_CHECKS = frozenset({"missing_defining_ingredient"})
+SEMANTIC_CHECKS = frozenset({"missing_defining_ingredient", "missing_natural_variation"})
 
 # Orthogonal to the trust tiers above: WHICH pipeline stage a check is about,
 # used only to decide whether a finding attributes to `source` (recipe

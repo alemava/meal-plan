@@ -10,6 +10,26 @@ from app.core.config import get_settings
 CF_BASE = "https://api.cloudflare.com/client/v4/accounts"
 
 
+class CloudflareImageQuotaExhausted(Exception):
+    """The REAL signal from Cloudflare itself (error code 4006, "you have
+    used up your daily free allocation..."), not our own attempt-count
+    estimate — raised only when the response actually says so, so callers
+    that want to react to genuine exhaustion (pool_warmer, 2026-07-20) don't
+    have to guess via a calibrated cap the way cost_status.py's proactive
+    check still does for the live-request path."""
+
+
+class CloudflareTextQuotaExhausted(Exception):
+    """Same real 4006 signal as CloudflareImageQuotaExhausted, for the text
+    model instead of the image one (2026-07-21) — text and image calls draw
+    from the SAME account-wide 10k-Neuron daily pool, so recipe_audit.py's
+    ~100+ text calls/run can exhaust it before real users generate any
+    images that day if it keeps hammering an already-exhausted Cloudflare
+    instead of noticing and switching over. See recipe_audit.py's
+    _semantic_findings for how this is used to stop retrying Cloudflare
+    mid-run rather than just falling back to DeepInfra row-by-row."""
+
+
 async def embed_text(text: str) -> list[float]:
     """Embed text with Cloudflare's BGE model (768 dimensions)."""
     settings = get_settings()
@@ -45,6 +65,14 @@ async def generate_text(system_prompt: str, user_prompt: str) -> str:
                 ]
             },
         )
+        if resp.status_code == 429:
+            try:
+                body = resp.json()
+            except ValueError:
+                body = {}
+            errors = body.get("errors") or []
+            if any(e.get("code") == 4006 for e in errors) or "daily free allocation" in resp.text:
+                raise CloudflareTextQuotaExhausted(resp.text)
         resp.raise_for_status()
         content = resp.json()["result"]["response"]
         # Cloudflare sometimes auto-parses JSON-shaped output into an object
@@ -61,25 +89,37 @@ async def generate_image(prompt: str) -> bytes:
     """First link in the image provider chain. Free, 10K Neurons/day — fails
     cleanly (raises) on limit rather than charging; never attach Workers Paid.
 
-    Switched to Flux Schnell (from Leonardo Phoenix) originally meaning to
-    match the fallback provider's model too — that fallback was Pollinations
-    at the time, whose live model roster turned out to be just "sana", not
-    Flux, so that consistency goal was never achievable and Pollinations was
-    later removed from the chain entirely (see deepinfra.py, the current paid
-    backstop, and image_chain.py). Kept Flux here anyway since it's a real,
-    confirmed, good-quality Cloudflare model on its own merits. Unlike the
-    previous model (Leonardo Phoenix), this endpoint has no width/
-    height parameter at all — it returns JSON+base64, not raw bytes, at
-    whatever its native size is — so the result is centre-cropped to 2:1
-    here to still match the frontend's aspect-ratio:2/1 CSS exactly."""
+    2026-07-20 — switched from flux-1-schnell to flux-2-klein-9b after a
+    same-day model shootout (see backend/benchmarks/ + the model-audit
+    artifact): visibly more realistic food photos (no more soft/mushy rice)
+    at comparable latency (~2-2.7s measured live vs flux-1-schnell's ~1.8s —
+    the gap doesn't matter since image generation always runs in the
+    background, never blocking the user-facing response). Also confirmed
+    live on DeepInfra (the paid backstop below), so both links in the chain
+    now use the same, better model.
+
+    Unlike flux-1-schnell's plain-JSON body, this model's schema requires
+    multipart/form-data (confirmed via Cloudflare's own model-schema
+    endpoint — a bare JSON POST returns "required properties... 'multipart'"
+    with no further explanation). It also has no width/height parameter —
+    returns JSON+base64 at its native 1024x1024 — so the result is still
+    centre-cropped to 2:1 here, same as before."""
     settings = get_settings()
-    url = f"{CF_BASE}/{settings.cf_account_id}/ai/run/@cf/black-forest-labs/flux-1-schnell"
+    url = f"{CF_BASE}/{settings.cf_account_id}/ai/run/@cf/black-forest-labs/flux-2-klein-9b"
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
             url,
             headers={"Authorization": f"Bearer {settings.cf_api_token}"},
-            json={"prompt": prompt, "steps": 4},
+            files={"prompt": (None, prompt), "steps": (None, "4")},
         )
+        if resp.status_code == 429:
+            try:
+                body = resp.json()
+            except ValueError:
+                body = {}
+            errors = body.get("errors") or []
+            if any(e.get("code") == 4006 for e in errors) or "daily free allocation" in resp.text:
+                raise CloudflareImageQuotaExhausted(resp.text)
         resp.raise_for_status()
         image_bytes = base64.b64decode(resp.json()["result"]["image"])
         return _crop_to_2_1(image_bytes)

@@ -8,8 +8,9 @@ from app.core import db
 from app.core.config import get_settings
 from app.core.security import require_internal_secret
 from app.models.generate import SlotRequest
-from app.services import resend_client
-from app.services.steps_generation import generate_steps
+from app.services import image_chain, resend_client
+from app.services.guardrails import parse_time_minutes
+from app.services.steps_generation import generate_steps, rewrite_remaining, timer_aware_total_minutes
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
 
@@ -56,23 +57,127 @@ async def generate_steps_task(payload: dict):
 
     steps, steps_provider = await generate_steps(recipe)
 
+    # 2026-07-19 — steps-time reconciliation: real bug found live, a "5
+    # minutes" recipe whose own generated steps totaled 48 min (the model
+    # had labeled the claimed time down to fit a tight request-time budget
+    # instead of picking a genuinely quick dish). Self-heals every recipe
+    # lazily, the first time it's actually selected, without a separate
+    # backfill script. A generous margin (25%, min 5-min gap) avoids
+    # overwriting a genuinely close, honest estimate over normal rounding.
+    #
+    # 2026-07-20 — switched the honest-total signal from steps[0]["remaining"]
+    # to timer_aware_total_minutes (see steps_generation.py): a second live
+    # bug ("Italian Cantuccini", claimed 10 min) sailed through because its
+    # steps[0].remaining was ALSO the wrong 10, matching the claim — the
+    # model had filled remaining in by a plain one-per-step countdown while
+    # its OWN timers summed to 55 min. Timers are concrete; the model's
+    # remaining chain isn't. When the correction fires, rewrite_remaining
+    # also fixes the per-step countdown so it's consistent with the new
+    # total (only then — an already-honest recipe keeps the model's values).
+    new_time = recipe.get("time")
+    honest_minutes = timer_aware_total_minutes(steps) if steps else None
+    claimed_minutes = parse_time_minutes(recipe.get("time"))
+    if (
+        honest_minutes is not None
+        and claimed_minutes is not None
+        and honest_minutes > claimed_minutes * 1.25
+        and honest_minutes - claimed_minutes >= 5
+    ):
+        new_time = f"{honest_minutes} min"
+        rewrite_remaining(steps)
+
     claimed = await db.pool().fetchval(
         """
-        UPDATE recipes SET steps = $1::jsonb, status = 'complete', steps_source = $2
-        WHERE id = $3 AND status = 'partial' RETURNING id
+        UPDATE recipes SET steps = $1::jsonb, status = 'complete', steps_source = $2, time = $3
+        WHERE id = $4 AND status = 'partial' RETURNING id
         """,
         steps,
         steps_provider,
+        new_time,
         recipe_id,
     )
     if not claimed:
         return {"status": "already_complete"}
+
+    if new_time != recipe.get("time"):
+        # meal_weeks copies `time` onto its own meal entry at SELECTION time
+        # (before steps exist) — without this, the reconciliation above would
+        # fix recipes.time but leave the already-selected week showing the
+        # stale, dishonest value forever (nothing else re-syncs it later).
+        await db.pool().execute(
+            """
+            UPDATE meal_weeks
+            SET meals = (
+                SELECT jsonb_agg(
+                    CASE WHEN m->>'recipe_id' = $1
+                    THEN m || jsonb_build_object('time', $2::text)
+                    ELSE m END
+                )
+                FROM jsonb_array_elements(meals) m
+            )
+            WHERE meals::text LIKE '%' || $1 || '%'
+            """,
+            recipe_id,
+            new_time,
+        )
 
     await resend_client.send_email(
         "Your recipe is ready!",
         f"<p>Your recipe <strong>{recipe['title']}</strong> is ready to view in mesa.</p>",
     )
     return {"status": "complete"}
+
+
+async def _backfill_job_images(job_id: str, user_id: str) -> None:
+    """See the call site above the complete-claim: regenerates any option in
+    this job's persisted result that still lacks an image_url, patching both
+    the canonical `recipes` row and the job's own result JSON (the frontend
+    reads options straight from the latter while polling)."""
+    result = await db.pool().fetchval("SELECT result FROM generation_jobs WHERE id = $1", job_id)
+    missing_ids = [
+        o["id"]
+        for slot in (result or {}).values()
+        for o in slot.get("options", [])
+        if not o.get("image_url")
+    ]
+    if not missing_ids:
+        return
+    rows = await db.pool().fetch(
+        "SELECT id, title, image_prompt FROM recipes "
+        "WHERE id = ANY($1::uuid[]) AND image_url IS NULL AND image_prompt IS NOT NULL",
+        missing_ids,
+    )
+
+    async def _fill_one(row) -> None:
+        url = await image_chain.generate_and_upload_image(
+            str(row["id"]), row["image_prompt"], user_id=user_id, title=row["title"]
+        )
+        if not url:
+            return
+        await db.pool().execute("UPDATE recipes SET image_url = $1 WHERE id = $2", url, row["id"])
+        await db.pool().execute(
+            """
+            UPDATE generation_jobs SET result = (
+              SELECT jsonb_object_agg(k, jsonb_set(v, '{options}', (
+                SELECT jsonb_agg(
+                  CASE WHEN o->>'id' = $2 THEN o || jsonb_build_object('image_url', $1::text) ELSE o END)
+                FROM jsonb_array_elements(v->'options') o)))
+              FROM jsonb_each(result) e(k, v)
+            )
+            WHERE id = $3
+            """,
+            url,
+            str(row["id"]),
+            job_id,
+        )
+
+    # Concurrent, not sequential (2026-07-20): the old per-row loop spent the
+    # 60s wall-clock budget one image at a time, so with several orphans the
+    # LAST one (e.g. the final dinner slot) got cut off mid-generation before
+    # its provider call even started — exactly how "Grilled Sea Bass" ended up
+    # with 0 image-log rows despite the job completing cleanly. Firing them
+    # together means the 60s covers the whole set, not one item.
+    await asyncio.gather(*(_fill_one(row) for row in rows), return_exceptions=True)
 
 
 async def _fail_job(job_id: str, error: str) -> dict | None:
@@ -191,6 +296,21 @@ async def generate_recipes_batch_task(payload: dict):
             "UPDATE generation_jobs SET error = $2, updated_at = now() WHERE id = $1", job_id, repr(exc)
         )
         raise
+
+    # Final image sweep (2026-07-19) — BEFORE the complete-claim, so the
+    # frontend (which stops polling once status='complete') still picks the
+    # late images up. The mid-run _needs_image tagging has now leaked options
+    # three separate times in one day through three different race windows
+    # (worker killed mid-image-phase, retry skipping already-complete slots,
+    # and one still-undiagnosed path — "Grilled Vegetable Panini with Pesto").
+    # Rather than chase each window, this guarantees the invariant that
+    # actually matters: NO job reaches 'complete' with an imageless option.
+    # Never fails the job over an image (same rule as everywhere else), and
+    # bounded so a stuck image provider can't hold 'complete' hostage.
+    try:
+        await asyncio.wait_for(_backfill_job_images(job_id, job["user_id"]), timeout=60)
+    except Exception:  # noqa: BLE001 — includes TimeoutError; images self-heal later, text is done
+        pass
 
     claimed = await db.pool().fetchval(
         "UPDATE generation_jobs SET status = 'complete', updated_at = now() "

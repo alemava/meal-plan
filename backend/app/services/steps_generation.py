@@ -1,7 +1,15 @@
 import html
+import math
 import re
 
 from app.services import ai_client
+
+# 2026-07-20 — rough per-step estimate for a step with NO timer (mixing,
+# chopping, plating, preheating). Prep time is genuinely hard to estimate
+# and the model doesn't timer it; a modest flat floor is honest-ish and,
+# critically, keeps timer steps (the concrete, dominant durations) from
+# being drowned out. See _step_costs_minutes / timer_aware_total_minutes.
+PREP_STEP_MINUTES = 2
 
 # step.text is rendered as raw HTML by the frontend (to support <strong>
 # ingredient highlighting) — escape everything else so a prompt injection or
@@ -26,6 +34,49 @@ class GeneratedStepsInvalid(Exception):
 def sanitize_step_text(text: str) -> str:
     escaped = html.escape(text, quote=False)
     return _ALLOWED_TAG_PATTERN.sub(lambda m: f"<{m.group(1)}strong>", escaped)
+
+
+def _step_costs_minutes(steps: list[dict]) -> list[int]:
+    """Per-step duration in whole minutes. A step's own timers are a HARD
+    floor on how long it takes (a 25-minute bake cannot be a 1-minute step);
+    a timer-less prep step gets PREP_STEP_MINUTES. This is the concrete,
+    model-provided signal — unlike the model's freehand `remaining` values,
+    which it fills in by counting down one-per-step and routinely gets wrong
+    (real bug found live: 'Italian Cantuccini' claimed 10 min total with
+    remaining 10→9→8…→0, while its own timers summed to 55 min of baking/
+    cooling/toasting)."""
+    costs = []
+    for step in steps:
+        timer_seconds = sum(
+            t.get("seconds", 0)
+            for t in (step.get("timers") or [])
+            if isinstance(t.get("seconds"), int | float) and not isinstance(t.get("seconds"), bool)
+        )
+        costs.append(max(1, math.ceil(timer_seconds / 60)) if timer_seconds > 0 else PREP_STEP_MINUTES)
+    return costs
+
+
+def timer_aware_total_minutes(steps: list[dict]) -> int:
+    """The recipe's real total, derived from concrete per-step timers rather
+    than trusting the model's own total/`remaining` (see _step_costs_minutes
+    for why). Used by internal.py's steps-time reconciliation as the honest
+    floor a claimed time is checked against."""
+    return sum(_step_costs_minutes(steps))
+
+
+def rewrite_remaining(steps: list[dict]) -> None:
+    """Overwrite each step's `remaining` (minutes left AFTER that step) so the
+    cook-mode countdown is consistent with the timer-aware total — only
+    called when the reconciliation actually corrects the total, so an
+    already-honest recipe keeps the model's own values untouched.
+    Correct-by-construction against validate_steps: strictly decreasing
+    (every cost >= 1) and exactly 0 on the last step."""
+    costs = _step_costs_minutes(steps)
+    total = sum(costs)
+    elapsed = 0
+    for step, cost in zip(steps, costs, strict=True):
+        elapsed += cost
+        step["remaining"] = total - elapsed
 
 
 def validate_steps(steps: list[dict]) -> None:
@@ -176,7 +227,12 @@ async def generate_steps(recipe: dict) -> tuple[list[dict], str]:
         "7. Add a timer for every genuinely timeable action (simmering, baking, resting, etc.) — "
         "multiple timers in one step if it has multiple timed actions.\n"
         "8. 'remaining' on each step is the estimated minutes left in the WHOLE recipe after that "
-        "step finishes, not the step's own duration — it must count down to 0 by the last step."
+        "step finishes, not the step's own duration — it must count down to 0 by the last step. "
+        "It MUST account for the real duration of every timer in this and every later step: a "
+        "25-minute bake means at least 25 minutes remain going into it, so 'remaining' cannot drop "
+        "by just 1 across a step that contains a 25-minute timer. Do NOT simply count down by one "
+        "per step — sum the actual timer durations of the remaining steps (plus a little prep time) "
+        "and let 'remaining' reflect that."
     )
     user_prompt = (
         f"Title: {recipe['title']}\n"

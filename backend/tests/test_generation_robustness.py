@@ -30,7 +30,12 @@ def _option(id_):
         "cuisine": "italian",
         "main_protein": None,
         "ingredients": [],
-        "image_url": None,
+        # Non-None on purpose: a real recipe id is required to query
+        # `recipes` for image_prompt whenever image_url is missing (see
+        # _run_generation's already-complete-missing-images backfill) — this
+        # helper's fake ids (e.g. "pool1") aren't real UUIDs, so tests that
+        # don't care about image backfill shouldn't accidentally trigger it.
+        "image_url": "https://example.com/placeholder.jpg",
         "status": "complete",
         "source": "test",
     }
@@ -153,8 +158,9 @@ async def test_pool_fill_stops_as_soon_as_needed_is_reached(monkeypatch):
     # a live AI call to expand, exactly what's unavailable here).
     assert all(c.get("include_stubs") is False for c in calls)
     # Both picks came from rung 1 (no relaxation kwargs beyond include_stubs/
-    # avoid_titles, which _pool_fill always passes) — rung 2 was never reached.
-    assert all(set(c) <= {"include_stubs", "avoid_titles"} for c in calls)
+    # avoid_titles/max_time_minutes, which _pool_fill always passes) — rung 2
+    # was never reached.
+    assert all(set(c) <= {"include_stubs", "avoid_titles", "max_time_minutes"} for c in calls)
 
 
 @pytest.mark.asyncio
@@ -186,21 +192,24 @@ async def test_pool_fill_escalates_through_rungs_when_earlier_ones_are_dry(monke
     # Confirms rung order: no relaxation, then +relax_suggested, then
     # +min_similarity, then +any_cuisine, each attempted (and exhausted,
     # returning None) before the one that actually found something.
-    assert rungs_seen[0] == {"include_stubs": False, "avoid_titles": set()}
+    assert rungs_seen[0] == {"include_stubs": False, "avoid_titles": set(), "max_time_minutes": None}
     assert rungs_seen[1] == {
         "include_stubs": False,
         "avoid_titles": set(),
+        "max_time_minutes": None,
         "relax_suggested": True,
     }
     assert rungs_seen[2] == {
         "include_stubs": False,
         "avoid_titles": set(),
+        "max_time_minutes": None,
         "relax_suggested": True,
         "min_similarity": 0.55,
     }
     assert rungs_seen[3] == {
         "include_stubs": False,
         "avoid_titles": set(),
+        "max_time_minutes": None,
         "relax_suggested": True,
         "min_similarity": 0.55,
         "any_cuisine": True,
@@ -233,7 +242,51 @@ async def test_pool_fill_returns_fewer_than_needed_if_fully_relaxed_pool_is_dry(
     async def fake_search(*args, **kwargs):
         return None
 
+    async def fake_repeat(*args, **kwargs):
+        return []
+
     monkeypatch.setattr(generate_recipes.pool_search, "search_recipe_pool", fake_search)
+    monkeypatch.setattr(generate_recipes.pool_search, "find_oldest_repeat_candidates", fake_repeat)
 
     filled = await generate_recipes._pool_fill(_FakeProfile(), "dinner", set(), [], needed=2)
     assert filled == []
+
+
+# --- timer-aware steps-time reconciliation (2026-07-20) -----------------
+
+def test_timer_aware_total_dominates_a_dishonest_countdown():
+    """The 'Italian Cantuccini' bug: the model's own `remaining` counted down
+    one-per-step (10->0) while its timers summed to 55 min. The timer-aware
+    total must reflect the real durations, not the countdown."""
+    from app.services.steps_generation import rewrite_remaining, timer_aware_total_minutes
+
+    steps = [
+        {"title": "Preheat", "text": "x", "timers": [], "remaining": 10},
+        {"title": "Mix", "text": "x", "timers": [], "remaining": 9},
+        {"title": "Bake", "text": "x", "timers": [{"label": "bake", "seconds": 1500}], "remaining": 8},
+        {"title": "Cool", "text": "x", "timers": [{"label": "cool", "seconds": 600}], "remaining": 7},
+        {"title": "Toast", "text": "x", "timers": [{"label": "toast", "seconds": 1200}], "remaining": 0},
+    ]
+    # 3 prep-less-timer steps? No: 2 prep (2 min each) + 25 + 10 + 20 = 59.
+    total = timer_aware_total_minutes(steps)
+    assert total == 2 + 2 + 25 + 10 + 20
+
+    rewrite_remaining(steps)
+    remainings = [s["remaining"] for s in steps]
+    # strictly decreasing and ends at 0 (validate_steps' contract)
+    assert remainings[-1] == 0
+    assert all(a > b for a, b in zip(remainings, remainings[1:]))
+    # the big drop happens across the 25-min bake step, not one-per-step
+    assert remainings[1] - remainings[2] == 25
+
+
+def test_timer_aware_total_ignores_bogus_timer_seconds():
+    """A malformed timer (bool/None/string seconds) must not crash or count."""
+    from app.services.steps_generation import timer_aware_total_minutes
+
+    steps = [
+        {"title": "a", "text": "x", "timers": [{"label": "t", "seconds": True}], "remaining": 1},
+        {"title": "b", "text": "x", "timers": [{"label": "t", "seconds": 300}], "remaining": 0},
+    ]
+    # first step's bogus bool-seconds falls back to PREP_STEP_MINUTES (2), second is 5
+    assert timer_aware_total_minutes(steps) == 2 + 5

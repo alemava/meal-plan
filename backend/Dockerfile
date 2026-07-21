@@ -6,7 +6,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
-COPY pool_warmer.py .
 
 # Cloud Run injects $PORT and expects the container to listen on it.
 ENV PORT=8080

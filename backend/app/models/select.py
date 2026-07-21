@@ -14,6 +14,9 @@ class SelectRecipeRequest(BaseModel):
     recipe_id: str
     target_serves: int | None = None
     include_optional: bool = False
+    # P3 (2026-07-19) — breakfast variation name, e.g. "With walnuts"; week-
+    # instance data (like `people`), not a property of the recipe itself.
+    variation: str | None = None
 
 
 class Timer(BaseModel):

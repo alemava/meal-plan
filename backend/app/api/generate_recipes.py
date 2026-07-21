@@ -22,6 +22,33 @@ from app.services.stub_expansion import expand_stub
 
 router = APIRouter(prefix="/api", tags=["recipes"])
 
+# 2026-07-20, user-requested: the first 3 breakfast slots in a batch each
+# pin to one of these fixed categories (see SlotRequest.breakfast_category /
+# index.html's slot-building loop for how a slot gets assigned one). Keywords
+# drive pool_search's hard ingredient/title filter; labels drive
+# fresh_generation's prompt instruction.
+BREAKFAST_CATEGORY_KEYWORDS = {
+    "yogurt": ["yogurt", "yoghurt", "skyr", "kefir"],
+    "toast": ["bread", "toast", "baguette", "sourdough", "brioche", "bagel"],
+    "eggs": ["egg", "eggs"],
+}
+BREAKFAST_CATEGORY_LABELS = {"yogurt": "yogurt", "toast": "toast/bread", "eggs": "eggs"}
+
+
+def _pantry_item_used(pantry_name: str, options: list[dict]) -> bool:
+    """Substring match, same tolerance as pool_search._matches_category —
+    a pantry entry named "mango" should count as used by an ingredient named
+    "diced mango" or "ripe mango, sliced", not just an exact string match."""
+    pantry_name = pantry_name.strip().lower()
+    if not pantry_name:
+        return False
+    for option in options:
+        for ing in option.get("ingredients") or []:
+            ing_name = (ing.get("name") or "").strip().lower()
+            if ing_name and (pantry_name in ing_name or ing_name in pantry_name):
+                return True
+    return False
+
 # Slot-complete callback signature: (slot_index, day, meal_type, options) -> None.
 # Used by the async worker (app/api/internal.py) to persist each slot's
 # result incrementally as it finishes, so a retried job only redoes whatever
@@ -242,10 +269,82 @@ async def _run_generation(
     # loop means only one coroutine ever runs between awaits, same reasoning
     # already relied on for the shared used_recipe_ids/used_cuisines below.
     failed_slots: list[tuple[int, str]] = []
+    # Deferred image generation (2026-07-18) — a slot returns as soon as its
+    # TEXT is ready; any fresh option tagged _needs_image gets its photo
+    # generated here, off to the side, then re-persists the same slot once
+    # done. Collected as tasks (not awaited inline) so slot N+1's text isn't
+    # held up behind slot N's images either.
+    image_tasks: list[asyncio.Task] = []
+
+    async def _fill_images_and_repersist(idx: int, day: str, meal_type: str, options: list[dict]) -> None:
+        pending = [o for o in options if o.pop("_needs_image", False)]
+        if not pending:
+            return
+        await _generate_and_attach_images(pending, user_id)
+        if on_slot_complete:
+            await on_slot_complete(idx, day, meal_type, options)
+
+    # 2026-07-19 — this "known, accepted edge case" (see the comment further
+    # down, near the final image_tasks gather) turned out to recur several
+    # times in one day once retries got frequent, not the rare event it was
+    # assumed to be: a worker killed mid-request during the image phase left
+    # the slot "complete" text-wise, and a retry used to skip it entirely via
+    # already_complete, permanently stranding it with no image (2 real cases
+    # hit live the same day: "Arroz con Pollo", "Grilled Chicken with Lemon
+    # and Herb Marinade"). Every already-complete option still missing
+    # image_url now gets one real retry here, before the normal per-slot
+    # groups even start. The persisted job result (built by _to_option_dict)
+    # never carries image_prompt, so it's fetched fresh from `recipes` first.
+    already_complete_missing_images = [
+        o for options in already_complete.values() for o in options if not o.get("image_url")
+    ]
+    if already_complete_missing_images:
+        prompt_rows = await db.pool().fetch(
+            "SELECT id, image_prompt FROM recipes WHERE id = ANY($1::uuid[])",
+            [o["id"] for o in already_complete_missing_images],
+        )
+        prompts_by_id = {str(row["id"]): row["image_prompt"] for row in prompt_rows}
+        for o in already_complete_missing_images:
+            o["image_prompt"] = prompts_by_id.get(o["id"])
+            o["_needs_image"] = True
+        for idx, options in already_complete.items():
+            if any(o.get("_needs_image") for o in options):
+                slot = slots[idx]
+                image_tasks.append(
+                    asyncio.create_task(_fill_images_and_repersist(idx, slot.day, slot.meal_type, options))
+                )
 
     async def _run_group(slots_with_idx):
+        # 2026-07-21, user-requested: each pantry item should be used at most
+        # ONCE per meal type across the whole batch — e.g. mango in one
+        # breakfast and jamón in a different one, not both repeating mango.
+        # A single meal combining several pantry items still only counts as
+        # one use of each (see _pantry_item_used below). Groups run one per
+        # meal_type (see the module docstring above), each starting from its
+        # own full copy of `pantry` — that's what lets the SAME item recur
+        # once in breakfast, once in lunch, once in dinner, while never
+        # repeating within one meal type's own slots.
+        available_pantry = list(pantry) if pantry else pantry
         for idx, slot in slots_with_idx:
             comment = guardrails.sanitize_user_comment(slot.comment)
+            # A slot normally yields 2 options together, and one of them can
+            # be an LLM call taking real seconds — real user feedback (2026-
+            # 07-18): cards still arrived in pairs even after images stopped
+            # blocking text, because both options were only ever persisted
+            # once, at the very end. This persists each option AS SOON as
+            # _generate_options_for_slot has it (pool matches are near-
+            # instant DB lookups anyway, so those still land together — it's
+            # the LLM-generated ones this actually helps). Growing the SAME
+            # slot's persisted list is safe/idempotent: internal.py's
+            # _persist overwrites that slot's whole entry each call, so a
+            # partial-then-fuller list for the same index never corrupts.
+            partial: list[dict] = []
+
+            async def _emit(option: dict, idx=idx, slot=slot, partial=partial) -> None:
+                partial.append(option)
+                if on_slot_complete:
+                    await on_slot_complete(idx, slot.day, slot.meal_type, list(partial))
+
             try:
                 options = await _generate_options_for_slot(
                     user_profile,
@@ -256,7 +355,10 @@ async def _run_generation(
                     comment,
                     slot.max_time_minutes,
                     used_cuisines,
-                    pantry,
+                    available_pantry,
+                    on_option_ready=_emit,
+                    options_needed=1 if slot.meal_type == "breakfast" else 2,
+                    breakfast_category=slot.breakfast_category,
                 )
             except Exception as exc:
                 failed_slots.append((idx, repr(exc)))
@@ -269,11 +371,32 @@ async def _run_generation(
                 {"title": o["title"], "main_protein": o.get("main_protein")} for o in options
             )
             used_cuisines.extend(o["cuisine"] for o in options if o.get("cuisine"))
+            if available_pantry:
+                available_pantry = [p for p in available_pantry if not _pantry_item_used(p["name"], options)]
             slot_options[idx] = options
             if on_slot_complete:
                 await on_slot_complete(idx, slot.day, slot.meal_type, options)
+            if any(o.get("_needs_image") for o in options):
+                image_tasks.append(
+                    asyncio.create_task(_fill_images_and_repersist(idx, slot.day, slot.meal_type, options))
+                )
 
     await asyncio.gather(*(_run_group(group) for group in groups.values()))
+    # Must finish (success or failure — an image failure is never a job
+    # failure, the existing queue+placeholder path already covers it) before
+    # this function returns: the Cloud Tasks worker's request ends right
+    # after, and Cloud Run can freeze a container's CPU once its response is
+    # sent, which would silently strand any image task still in flight.
+    #
+    # If BATCH_WORKER_TIMEOUT_SECONDS is hit while an image task is still
+    # running, asyncio.wait_for in internal.py cancels this whole function —
+    # that slot's TEXT is already persisted as "complete" by then. This used
+    # to be a dead end (a retry's already_complete skipped the slot entirely,
+    # stranding it with no image forever) — no longer: see the already-
+    # complete-missing-images backfill near the top of this function, which
+    # gives exactly this case one real retry on the next attempt.
+    if image_tasks:
+        await asyncio.gather(*image_tasks, return_exceptions=True)
 
     if failed_slots:
         raise JobSlotsIncomplete(failed_slots)
@@ -300,9 +423,27 @@ async def _generate_options_for_slot(
     max_time_minutes: int | None = None,
     used_cuisines: list[str] | None = None,
     pantry: list[dict] | None = None,
+    on_option_ready: Callable[[dict], Awaitable[None]] | None = None,
+    options_needed: int = 2,
+    breakfast_category: str | None = None,
 ) -> list[dict]:
     """ADR 2 fallbacks: no qualifying pool match -> both fresh; generation
     fails / cost kill-switch hit -> two pool recipes.
+
+    options_needed (2026-07-18): breakfast asks for 1, not 2 — real user
+    feedback that breakfast tolerates far more repetition than lunch/dinner
+    (confirmed against real meal-planning apps' own weekly/themed breakfast
+    rotations), so generating 2 alternatives per requested breakfast slot
+    was wasted variety nobody asked for. Handled as a genuinely separate,
+    simpler path below (not a parametrized version of the 2-option branches)
+    to keep the existing, more complex 2-option logic completely untouched.
+
+    on_option_ready (2026-07-18), if given, fires once per option AS SOON as
+    it's individually ready — not batched at the end — so the caller can
+    persist/show it immediately rather than waiting for this slot's second
+    option too. Pool matches are near-instant (DB lookup), so those still
+    land close together in practice; this is what actually shortens the
+    perceived wait for the LLM-generated ones.
 
     2026-07-14 addition (deliberate trade-off, not a bug fix): the pool is
     checked for a SECOND qualifying match before ever touching fresh
@@ -329,8 +470,20 @@ async def _generate_options_for_slot(
     # own "avoid repeating" prompt/guardrail.
     avoid_titles = {h["title"] for h in recent_history if h.get("title")}
 
+    # 2026-07-20 — only the single-option breakfast path (options_needed==1,
+    # below) ever gets a breakfast_category; the 2-option lunch/dinner
+    # branches never pass one, so this is a no-op there.
+    category_keywords = BREAKFAST_CATEGORY_KEYWORDS.get(breakfast_category) if breakfast_category else None
+    category_label = BREAKFAST_CATEGORY_LABELS.get(breakfast_category) if breakfast_category else None
+
     pool_option = await pool_search.search_recipe_pool(
-        user_profile, meal_type, exclude_ids, used_cuisines=used_cuisines, avoid_titles=avoid_titles
+        user_profile,
+        meal_type,
+        exclude_ids,
+        used_cuisines=used_cuisines,
+        avoid_titles=avoid_titles,
+        max_time_minutes=max_time_minutes,
+        category_keywords=category_keywords,
     )
     if pool_option and pool_option["status"] == "stub":
         try:
@@ -340,6 +493,47 @@ async def _generate_options_for_slot(
             # branches below already handle pool_option=None correctly by
             # falling through to fresh generation.
             pool_option = None
+    if pool_option and on_option_ready:
+        await on_option_ready(pool_option)
+
+    if options_needed == 1:
+        if pool_option:
+            await _log_suggestions(user_id, [pool_option])
+            return [pool_option]
+        fresh_option = None
+        try:
+            fresh_option = await fresh_generation.generate_fresh_option(
+                user_profile,
+                meal_type,
+                recent_history,
+                comment=comment,
+                max_time_minutes=max_time_minutes,
+                used_cuisines=used_cuisines,
+                pantry=pantry,
+                category_hint=category_label,
+            )
+            if fresh_option and on_option_ready:
+                await on_option_ready(fresh_option)
+        except AIProviderExhausted:
+            pass
+        options = [fresh_option] if fresh_option else []
+        if not options:
+            options = await _pool_fill(
+                user_profile,
+                meal_type,
+                exclude_ids,
+                used_cuisines,
+                1,
+                avoid_titles=avoid_titles,
+                max_time_minutes=max_time_minutes,
+            )
+            if on_option_ready:
+                for o in options:
+                    await on_option_ready(o)
+        elif fresh_option:
+            fresh_option["_needs_image"] = True
+        await _log_suggestions(user_id, options)
+        return options
 
     # Proactive second pool search — computed before deciding whether fresh
     # generation is needed at all, not just as the post-failure fallback the
@@ -354,6 +548,7 @@ async def _generate_options_for_slot(
             exclude_ids | {str(pool_option["id"])},
             used_cuisines=used_cuisines + ([pool_option["cuisine"]] if pool_option.get("cuisine") else []),
             avoid_titles=avoid_titles | {pool_option["title"]},
+            max_time_minutes=max_time_minutes,
         )
         if second_pool_option and second_pool_option["status"] == "stub":
             try:
@@ -363,6 +558,8 @@ async def _generate_options_for_slot(
 
     if pool_option and second_pool_option:
         options = [pool_option, second_pool_option]
+        if on_option_ready:
+            await on_option_ready(second_pool_option)
         await _log_suggestions(user_id, options)
         return options
 
@@ -391,6 +588,8 @@ async def _generate_options_for_slot(
             used_cuisines=used_cuisines,
             pantry=pantry,
         )
+        if fresh_option and on_option_ready:
+            await on_option_ready(fresh_option)
     except AIProviderExhausted:
         generation_failed = True
     if fresh_option and fresh_option.get("cuisine"):
@@ -417,6 +616,8 @@ async def _generate_options_for_slot(
                 used_cuisines=used_cuisines,
                 pantry=pantry,
             )
+            if second_fresh and on_option_ready:
+                await on_option_ready(second_fresh)
         except AIProviderExhausted:
             pass
         options = [o for o in (fresh_option, second_fresh) if o]
@@ -439,22 +640,33 @@ async def _generate_options_for_slot(
     # short or empty. A slot ends with 0 options only if the fully-relaxed
     # pool has nothing allergen/dislike-safe left either.
     if len(options) < 2:
-        options += await _pool_fill(
+        filled = await _pool_fill(
             user_profile,
             meal_type,
             exclude_ids | {str(o["id"]) for o in options},
             used_cuisines,
             2 - len(options),
             avoid_titles=avoid_titles | {o["title"] for o in options},
+            max_time_minutes=max_time_minutes,
         )
+        options += filled
+        if on_option_ready:
+            for o in filled:
+                await on_option_ready(o)
 
-    # Image-text sync rule: ONLY freshly-generated options ever get a
-    # synchronous, in-request image call — pool matches and expanded stubs
-    # already have an image (or are queued and shown with a placeholder) and
-    # must never wait. When both options in a slot are fresh, this fires both
-    # image calls in parallel to halve the wait, not one after another.
-    if fresh_options:
-        await _generate_and_attach_images(fresh_options, user_id)
+    # Image-text sync rule RELAXED (2026-07-18, user feedback: cards arrived
+    # in bursts because a slot's TEXT — ready in ~5s — sat blocked behind its
+    # own image generation before either was shown). Only freshly-generated
+    # options ever need an image at all (pool matches/expanded stubs already
+    # have one, or are queued with a placeholder) — but that image no longer
+    # blocks this slot's return. It's tagged here and generated afterward, in
+    # the background, by _run_generation/_run_group below, which persists
+    # the slot a second time once the image lands. The frontend already
+    # renders the gradient placeholder for a null image_url and swaps in the
+    # real photo whenever the next poll delivers it — no frontend change
+    # needed for this half.
+    for o in fresh_options:
+        o["_needs_image"] = True
 
     await _log_suggestions(user_id, options)
     return options
@@ -475,21 +687,39 @@ async def _pool_fill(
     used_cuisines: list[str],
     needed: int,
     avoid_titles: set[str] | None = None,
+    max_time_minutes: int | None = None,
 ) -> list[dict]:
     """Degraded-mode fallback when AI generation couldn't fill a slot (both
     providers exhausted/erroring): walk the pool with progressively relaxed
     constraints instead of leaving the slot short or empty. Allergen/dislike
     filters, the 60-day "actually used" exclusion, the explicit-discard
-    exclusion, and avoid_titles are NEVER relaxed — only the 7-day "recently
-    shown" window, the similarity threshold, and the preferred-cuisine
-    filter loosen, one rung at a time, only as far as needed. include_stubs=
-    False on every rung: a stub needs a live AI call to expand, which is
-    exactly what's unavailable here.
+    exclusion, avoid_titles, and max_time_minutes are NEVER relaxed — only
+    the 7-day "recently shown" window, the similarity threshold, and the
+    preferred-cuisine filter loosen, one rung at a time, only as far as
+    needed. include_stubs=False on every rung: a stub needs a live AI call to
+    expand, which is exactly what's unavailable here.
+
+    Absolute last resort (2026-07-19, user-requested): if every rung above
+    still leaves the slot short, fall through to
+    pool_search.find_oldest_repeat_candidates — a genuine repeat, but the
+    LEAST recently suggested one (or never-suggested), never a random one.
+    This is the only path that relaxes the 60-day "actually used" exclusion;
+    discards/allergies/max_time_minutes stay hard even here.
+
+    2026-07-19, same-day fix: the inbound `avoid_titles` carries the 7-day
+    "recently suggested" title list (from batch_history upstream) — exactly
+    what this last resort exists to override. Passing it straight through
+    silently defeated the whole point (a heavily-tested account can have
+    24 of 26 real candidates already on that list, so almost nothing ever
+    reached this fallback). The last-resort call now only avoids titles
+    actually picked WITHIN this same _pool_fill invocation, tracked
+    separately below.
     """
     filled: list[dict] = []
     excluded = set(exclude_ids)
     cuisines = list(used_cuisines)
     titles = set(avoid_titles or set())
+    batch_only_titles: set[str] = set()
     for rung in _POOL_FILL_RUNGS:
         if len(filled) >= needed:
             break
@@ -501,6 +731,7 @@ async def _pool_fill(
                 used_cuisines=cuisines,
                 avoid_titles=titles,
                 include_stubs=False,
+                max_time_minutes=max_time_minutes,
                 **rung,
             )
             if not candidate:
@@ -508,8 +739,21 @@ async def _pool_fill(
             filled.append(candidate)
             excluded.add(str(candidate["id"]))
             titles.add(candidate["title"])
+            batch_only_titles.add(candidate["title"])
             if candidate.get("cuisine"):
                 cuisines.append(candidate["cuisine"])
+
+    if len(filled) < needed:
+        repeats = await pool_search.find_oldest_repeat_candidates(
+            user_profile,
+            meal_type,
+            excluded,
+            needed - len(filled),
+            max_time_minutes=max_time_minutes,
+            avoid_titles=batch_only_titles,
+        )
+        filled += repeats
+
     return filled
 
 
@@ -536,7 +780,7 @@ async def _log_suggestions(user_id: str, options: list[dict]) -> None:
 
 
 async def _generate_and_attach_images(options: list[dict], user_id: str) -> None:
-    specs = [(o["id"], o["image_prompt"]) for o in options]
+    specs = [(o["id"], o["image_prompt"], o["title"]) for o in options]
     urls = await image_chain.generate_images_for_live_options(specs, user_id=user_id)
     for option, url in zip(options, urls, strict=False):
         option["image_url"] = url
@@ -560,4 +804,5 @@ def _to_option_dict(option: dict) -> dict:
         "base_serves": option.get("base_serves"),
         "time": option.get("time"),
         "kcal": option.get("kcal"),
+        "variations": option.get("variations") or [],
     }

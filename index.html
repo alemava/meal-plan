@@ -147,8 +147,110 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .gen-form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:16px 0 20px}
 .gen-form label{display:flex;flex-direction:column;gap:4px;font-size:.74rem;font-weight:600;color:var(--mut)}
 .gen-form select{padding:9px 10px;border-radius:10px;border:1px solid var(--brd2);background:var(--wht);font-size:.86rem;color:var(--txt)}
-.gen-go{background:var(--acc);color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:.86rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;height:38px}
+.gen-go{display:block;width:100%;box-sizing:border-box;background:var(--acc);color:#fff;border:none;border-radius:14px;padding:14px;font-size:.9rem;font-weight:700;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .gen-go:hover{background:var(--acd)}
+.gen-go[disabled],.gen-go.off{background:var(--brd);color:var(--hnt);cursor:default}
+.gen-go.confirm{background:var(--grn);margin-top:18px}
+.gen-go.confirm:hover{background:#46634e}
+
+.gen-progress-bar{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.gen-progress-bar .seg{height:4px;flex:1;border-radius:999px;background:var(--brd)}
+.gen-progress-bar .seg.on{background:var(--acc)}
+.gen-progress-lbl{font-size:.72rem;font-weight:700;color:var(--hnt);flex-shrink:0}
+.gen-back{font-size:1.1rem;color:var(--mut);cursor:pointer;padding:2px 6px;flex-shrink:0}
+
+.gen-meal-card{display:flex;flex-direction:column;gap:10px;background:var(--wht);border:1px solid var(--brd);border-radius:16px;padding:14px;box-shadow:var(--shd);margin-bottom:10px}
+.gen-meal-top{display:flex;align-items:center;gap:12px}
+.gen-meal-icon{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0}
+.gen-meal-lbl{font-size:.92rem;font-weight:700}
+.gen-meal-sub{font-size:.74rem;color:var(--hnt)}
+.gen-stepper{display:flex;align-items:center;gap:12px;margin-left:auto}
+.gen-step-btn{width:34px;height:34px;border-radius:50%;background:var(--srf);border:none;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.gen-step-count{width:20px;text-align:center;font-weight:800;font-size:1.05rem;color:var(--hnt)}
+.gen-step-count.on{color:var(--acc)}
+.gen-time-row{display:flex;align-items:center;gap:8px;border-top:1px solid var(--srf);padding-top:10px}
+.gen-time-lbl{white-space:nowrap;font-size:.72rem;font-weight:600;color:var(--hnt)}
+.gen-time-chips{display:flex;gap:5px;flex:1;justify-content:flex-end}
+.gen-time-chip{white-space:nowrap;border-radius:999px;padding:5px 11px;font-size:.74rem;font-weight:600;cursor:pointer;background:var(--srf);color:var(--mut);border:none}
+.gen-time-chip.on{background:var(--acc);color:#fff;font-weight:700}
+
+.gen-people-row{display:flex;align-items:center;justify-content:space-between;background:var(--srf);border-radius:16px;padding:12px 14px;margin-bottom:20px}
+.gen-people-lbl{white-space:nowrap;font-size:.84rem;font-weight:600;color:var(--mut)}
+.gen-people-ctl{display:flex;align-items:center;gap:12px}
+.gen-people-btn{width:30px;height:30px;border-radius:50%;background:var(--wht);border:none;display:flex;align-items:center;justify-content:center;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.gen-people-count{font-weight:800;min-width:14px;text-align:center}
+
+.gen-skip-link{text-align:center;font-size:.8rem;color:var(--acc);font-weight:600;margin-top:14px;cursor:pointer}
+
+.gen-craving-chip{white-space:nowrap;border-radius:999px;padding:9px 14px;font-size:.8rem;cursor:pointer;border:1.5px solid var(--brd2);background:var(--wht);color:var(--txt);font-weight:600;display:inline-block}
+.gen-craving-chip.on{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:700}
+
+.gen-pantry-box{background:var(--wht);border:1px solid var(--brd);border-radius:16px;padding:12px;box-shadow:var(--shd)}
+.gen-pantry-chips{display:flex;flex-wrap:wrap;gap:7px}
+.gen-pantry-chip{white-space:nowrap;display:inline-flex;align-items:center;gap:6px;background:var(--gnb);border:1px solid var(--gnc);color:var(--grn);border-radius:999px;padding:7px 12px;font-size:.78rem;font-weight:600}
+.gen-pantry-chip .x{cursor:pointer;opacity:.65}
+.gen-pantry-add{width:100%;box-sizing:border-box;margin-top:9px;padding:8px 10px;border-radius:10px;border:1px dashed var(--brd2);background:var(--bg);font-size:.78rem;color:var(--txt)}
+.gen-pantry-hint{font-size:.7rem;color:var(--hnt);margin-top:9px}
+
+.sug-sec-hdr{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:9px}
+.sug-sec-lbl{display:flex;align-items:baseline;gap:8px}
+.sug-sec-lbl .n{font-size:.92rem;font-weight:800}
+.sug-sec-lbl .m{white-space:nowrap;font-size:.72rem;font-weight:600;color:var(--hnt)}
+.sug-progress{white-space:nowrap;font-size:.7rem;font-weight:700;border-radius:999px;padding:3px 9px}
+.sug-progress.done{background:var(--gnb);border:1px solid var(--gnc);color:var(--grn)}
+.sug-progress.todo{background:var(--acl);border:1px solid var(--acb);color:var(--acc)}
+
+.sug-grid{display:flex;flex-direction:column}
+@media (min-width:900px){
+  .sug-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .sug-grid .sug-card,.sug-grid .sug-skel{margin-bottom:0}
+}
+.sug-card{background:var(--wht);border:1px solid var(--brd);border-radius:18px;overflow:hidden;box-shadow:var(--shd);margin-bottom:12px;animation:sugFadeUp .35s ease}
+@keyframes sugFadeUp{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}
+.sug-photo{height:auto;aspect-ratio:2/1;position:relative;display:flex;align-items:center;justify-content:center;background-size:cover;background-position:center}
+.sug-photo .ph-emoji{font-size:3rem}
+/* Keeps the same shimmer feel as .sug-skel-thumb (2026-07-20, user
+   feedback: the loading effect disappeared the moment TEXT landed even
+   though the photo itself was still generating in the background — this
+   carries it through until a real image_url shows up). */
+.sug-photo.loading{background:linear-gradient(90deg,var(--srf) 25%,var(--brd) 37%,var(--srf) 63%);background-size:400% 100%;animation:sugShimmer 1.4s infinite linear}
+.sug-photo.loading .ph-emoji{opacity:.35}
+.sug-badge{position:absolute;top:10px;left:10px;background:rgba(255,255,255,.92);border-radius:999px;padding:4px 10px;font-size:.66rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.sug-badge.pool{color:var(--grn)}
+.sug-badge.new{color:var(--acc)}
+.sug-x{position:absolute;top:8px;right:10px;background:rgba(255,255,255,.92);border:none;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--mut);cursor:pointer}
+.sug-body{padding:14px 16px 16px}
+.sug-ttl{font-size:1.02rem;font-weight:700;line-height:1.3}
+.sug-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 9px}
+.sug-chip{white-space:nowrap;background:var(--srf);border-radius:999px;padding:4px 10px;font-size:.72rem;font-weight:600;color:var(--mut)}
+.sug-chip.uses{background:var(--gnb);color:var(--grn);font-weight:700}
+.sug-ing{font-size:.78rem;color:var(--mut);line-height:1.5}
+.sug-more{color:var(--acc);font-weight:600;cursor:pointer;white-space:nowrap}
+.sug-ing-full{margin-top:8px;border-top:1px dashed var(--brd);padding-top:8px;display:flex;flex-direction:column;gap:4px}
+.sug-ing-row{display:flex;justify-content:space-between;gap:10px;font-size:.76rem;line-height:1.5}
+.sug-ing-row .q{color:var(--hnt);white-space:nowrap}
+
+.sug-dismiss{display:flex;flex-direction:column;gap:8px;background:var(--acl);border-bottom:1px solid var(--acb);padding:10px 14px}
+.sug-dismiss-txt{font-size:.78rem;font-weight:600;color:var(--acd)}
+.sug-dismiss-row{display:flex;gap:8px}
+.sug-dismiss-yes{white-space:nowrap;background:var(--acc);color:#fff;border:none;border-radius:10px;padding:8px 13px;font-size:.76rem;font-weight:700;cursor:pointer}
+.sug-dismiss-no{white-space:nowrap;background:var(--wht);border:1.5px solid var(--brd2);color:var(--txt);border-radius:10px;padding:8px 13px;font-size:.76rem;font-weight:600;cursor:pointer}
+
+.sug-days{display:flex;gap:5px;margin-top:12px}
+.sug-day{flex:1;text-align:center;border-radius:10px;padding:8px 0;font-size:.72rem;font-weight:600;cursor:pointer;background:var(--srf);color:var(--mut);border:none;display:inline-block}
+.sug-day .nm{display:block}
+.sug-day.sel{background:var(--grn);color:#fff;font-weight:700}
+.sug-day.taken{color:var(--brd2);cursor:default}
+.sug-vars{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.sug-var-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sug-var-day{font-size:.78rem;font-weight:600;color:var(--mut)}
+.sug-var-row select{font-size:.78rem;border-radius:8px;border:1px solid var(--brd2);background:var(--srf);color:var(--txt);padding:5px 8px}
+
+.sug-skel{background:var(--wht);border:1px dashed var(--brd2);border-radius:18px;padding:14px;display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.sug-skel-thumb{width:46px;height:46px;border-radius:12px;flex-shrink:0;background:linear-gradient(90deg,var(--srf) 25%,var(--brd) 37%,var(--srf) 63%);background-size:400% 100%;animation:sugShimmer 1.4s infinite linear}
+@keyframes sugShimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
+.sug-skel-txt{font-size:.84rem;font-weight:700}
+.sug-skel-sub{font-size:.74rem;color:var(--hnt);margin-top:2px}
 .day-count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--acc);color:#fff;font-size:.6rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;margin-left:4px}
 .wnb.on .day-count{background:var(--bg);color:var(--txt)}
 /* Fixed width so day pills stay the same size whether or not they have a
@@ -167,9 +269,6 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .meal-card-type{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
 .meal-card-ttl{font-size:.92rem;font-weight:600;color:var(--txt);line-height:1.3}
 .meal-card-meta{font-size:.76rem;color:var(--mut)}
-.gen-opt{position:relative}
-.gen-opt-discard{position:absolute;top:6px;right:6px;border:none;background:none;color:var(--hnt);font-size:.85rem;cursor:pointer;padding:6px;line-height:1;border-radius:8px;-webkit-tap-highlight-color:transparent;z-index:1}
-.gen-opt-discard:hover{color:var(--txt);background:var(--srf)}
 
 .bnav{position:fixed;bottom:0;left:0;right:0;background:var(--wht);border-top:1px solid var(--brd);display:flex;z-index:100;height:62px;padding:6px 10px 8px}
 .bnb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent;color:var(--hnt);border-radius:12px;margin:0 3px;transition:background .15s}
@@ -657,7 +756,7 @@ async function hydrateMeals(weeks) {
     (w.meals || []).forEach(function(m) { if (m.recipe_id) ids.add(m.recipe_id); });
   });
   if (!ids.size) return;
-  var recipes = await sbFetch('/rest/v1/recipes?id=in.(' + Array.from(ids).join(',') + ')&select=id,title,ingredients,steps,image_url,image_prompt,base_serves,kcal');
+  var recipes = await sbFetch('/rest/v1/recipes?id=in.(' + Array.from(ids).join(',') + ')&select=id,title,ingredients,steps,image_url,image_prompt,base_serves,kcal,variations');
   var byId = {};
   recipes.forEach(function(r) { byId[r.id] = r; });
   weeks.forEach(function(w) {
@@ -669,21 +768,44 @@ async function hydrateMeals(weeks) {
       if (m.people == null) m.people = baseServes;
       var ratio = m.people / baseServes;
       m.title        = r.title;
-      m.image_url    = r.image_url;
       m.image_prompt = r.image_prompt;
       m.steps        = r.steps;
-      m.ingredients  = (r.ingredients || []).map(function(ing) {
+      // Variation delta (P3, 2026-07-19): applied BEFORE scaling, so the
+      // shopping list and recipe view need zero further changes — both
+      // already just read m.ingredients. Unknown/stale variation name (e.g.
+      // the recipe was regenerated) silently falls back to the base recipe.
+      var recipeIngredients = r.ingredients || [];
+      var match = m.variation && (r.variations || []).find(function(v) { return v.name === m.variation; });
+      if (match) {
+        var removedNames = new Set((match.remove || []).map(function(n) { return n.toLowerCase(); }));
+        recipeIngredients = recipeIngredients.filter(function(ing) { return !removedNames.has((ing.name || '').toLowerCase()); }).concat(match.add || []);
+      }
+      // A visually-different variation (2026-07-20, e.g. gazpacho WITH
+      // shrimp) gets its own lazily-generated photo, written into this
+      // variation's own `image_url` field the first time anyone selects it
+      // (see select_recipe.py) — reused here on every later load. No
+      // variation-specific image yet (or no variation selected) falls back
+      // to the base recipe's own photo, same pattern as kcal below.
+      m.image_url = (match && match.image_url) || r.image_url;
+      m.ingredients  = recipeIngredients.map(function(ing) {
         return Object.assign({}, ing, {
           avail: availSet.has(ing.name),
           qty: scaleIngredientQty(ing, ratio),
         });
       });
-      // kcal is the total for the WHOLE recipe as written (confirmed in
-      // generation_rules.py), scaled linearly with people — same total-food
-      // intuition as the "linear" ingredient category, not a per-ingredient
-      // energy breakdown (that math only exists server-side, in
-      // recipe_audit.py, for plausibility auditing, not for real display).
-      if (r.kcal) m.kcal = Math.round(r.kcal * ratio);
+      // r.kcal is the TOTAL for the whole recipe as written, at base_serves
+      // (confirmed in generation_rules.py) — displayed per-person instead
+      // (user's explicit call, 2026-07-17: a pill that grows when you add
+      // more people read as wrong, even though the total-kcal math behind
+      // it was internally consistent). Per-person is r.kcal / baseServes,
+      // a constant independent of the CURRENT people count — deliberately
+      // NOT r.kcal * ratio / m.people, which is algebraically identical but
+      // would obscure that this never needs to change when people does.
+      // A variation can declare its own kcal (2026-07-19, e.g. adding a
+      // starchy side genuinely changes the total) — use it instead of the
+      // base recipe's kcal whenever the matched variation has one.
+      var totalKcal = (match && match.kcal) || r.kcal;
+      if (totalKcal) m.kcal = Math.round(totalKcal / baseServes);
     });
   });
 }
@@ -995,11 +1117,11 @@ async function init() {
     G.weeks = weeks;
     var thisMonday = thisWeekMonday();
 
-    // build carousel: up to 2 past + current + 1 future
+    // build carousel: up to 1 past + current + 2 future
     var past    = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'past'; });
     var current = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'current'; });
     var future  = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'future'; });
-    var shown   = past.slice(-1).concat(current).concat(future.slice(0,1));
+    var shown   = past.slice(-1).concat(current).concat(future.slice(0,2));
     renderWeekCarousel(shown, thisMonday);
 
     // pick current week, fallback to most recent
@@ -1523,7 +1645,13 @@ function renderWeekCarousel(shown, thisMonday) {
   // the user start one without waiting for the real week-planning flow.
   // Always past the latest week they have anything for, so it's always a
   // genuinely new week — no need to check for an existing tab first.
-  var planBtn = '<button class="wktab" onclick="planNextWeek()">+ Plan next week</button>';
+  // Capped at 2 future weeks (2026-07-19, real bug found live: the carousel
+  // only ever showed 1 future tab regardless of how many future weeks
+  // existed — a second planned week got created and populated fine but had
+  // no tab to view it from). Once 2 future weeks already exist, the button
+  // hides — nothing further to plan ahead of.
+  var futureShown = shown.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'future'; }).length;
+  var planBtn = futureShown < 2 ? '<button class="wktab" onclick="planNextWeek()">+ Plan next week</button>' : '';
 
   if (shown.length <= 1 && !planBtn) { nav.style.display = 'none'; return; }
   nav.style.display = 'flex';
@@ -1687,48 +1815,198 @@ function goToDayOrFirstSpecial(dayLabel) {
 var GEN_MEAL_TYPES = ['breakfast', 'lunch', 'dinner'];
 var GEN_MEAL_LABELS = {breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner'};
 
+// Design handoff (2026-07-17, design_handoff_generation_flow/): guided
+// 2-step request (counts+time+people, then cravings+pantry) instead of one
+// long form, replacing the 3 per-meal-type free-text craving boxes with a
+// shared preset-chip set + one shared note (user's own idea, confirmed by
+// Claude Design independently) — same `comment` sent to every slot in the
+// batch, backend contract unchanged. G.genScreen: 'counts' | 'cravings' | 'feed'.
+// "Under 20 min" removed (2026-07-18, user feedback) — redundant with the
+// per-meal-type time picker already on screen 1.
+var CRAVING_CHIPS = [
+  {id: 'rice',    label: '🍚 Something with rice'},
+  {id: 'spicy',   label: '🌶 Spicy'},
+  {id: 'comfort', label: '🍜 Comforting'},
+  {id: 'veg',     label: '🥦 More veggies'},
+  {id: 'fish',    label: '🐟 Fish & seafood'},
+  {id: 'pasta',   label: '🍝 Pasta'},
+  {id: 'meaty',   label: '🥩 Something meaty'}
+];
+var GEN_TIME_OPTS  = {breakfast: [5, 10, 15, 20], lunch: [15, 20, 30, 45], dinner: [20, 30, 45, 60]};
+var GEN_MEAL_ICONS = {breakfast: ['🍳', 'var(--acl)'], lunch: ['🥗', 'var(--gnb)'], dinner: ['🍲', 'var(--acl)']};
+
 function showGenerateView() {
   setNavActive('gen');
   // Testing-only affordance, not the final multi-meal request flow: ask for
   // N of each meal type (not tied to specific days yet — the backend's
   // "day" field doesn't affect generation, only where a pick eventually
   // lands), pool every option by meal type, and assign days afterward on
-  // this same screen. Counts/results persist in G so navigating away
-  // (e.g. into a picked recipe) and back doesn't lose everything.
+  // the feed screen. Counts/results persist in G so navigating away (e.g.
+  // into a picked recipe) and back doesn't lose everything.
   if (!G.genCounts) G.genCounts = {breakfast: 0, lunch: 0, dinner: 2};
-  if (!G.genComments) G.genComments = {breakfast: '', lunch: '', dinner: ''};
   if (!G.genMaxTime) G.genMaxTime = {breakfast: 10, lunch: 30, dinner: 45};
   if (!G.genPeople) G.genPeople = 2;
-  if (G.genPantry == null) G.genPantry = '';
+  // Pantry is per-request, never carried over — resets to empty every time
+  // (confirmed: the user's kitchen contents this week aren't remembered
+  // next week, only fed into THIS week's shopping-list coverage math via
+  // week_pantry). No fetch-and-prefill step, unlike a real persistence
+  // feature.
+  if (!G.genPantryChips) G.genPantryChips = [];
+  if (G.genPantryInput == null) G.genPantryInput = '';
+  if (!G.genCravings) G.genCravings = [];
+  if (G.genNote == null) G.genNote = '';
   if (!G.genAssignments) G.genAssignments = {};
+  if (!G.genExpanded) G.genExpanded = {};
+  if (G.genDismissMenu === undefined) G.genDismissMenu = null;
+  if (G.genBusyNote === undefined) G.genBusyNote = false;
+  if (!G.genScreen) {
+    // Land straight on the feed if there's already a batch in memory or a
+    // recent job to resume — never dump the user back on an empty request
+    // form when they navigate away from and back to an in-progress/just-
+    // finished batch.
+    var hasResults = G.genResults && Object.keys(G.genResults).length;
+    var hasRecentJob = false;
+    try {
+      var lastJob = JSON.parse(localStorage.getItem('mesa-last-gen-job') || 'null');
+      hasRecentJob = !!(lastJob && lastJob.id && (Date.now() - lastJob.at) <= GEN_RESUME_MAX_AGE_MS);
+    } catch (e) {}
+    G.genScreen = (hasResults || hasRecentJob) ? 'feed' : 'counts';
+  }
   renderGenerateForm();
   maybeResumeLastGenJob();
 }
 
 function renderGenerateForm() {
-  var rows = GEN_MEAL_TYPES.map(function(mt) {
-    return '<div class="gen-form">'
-      + '<label>' + GEN_MEAL_LABELS[mt] + '<input type="number" min="0" max="7" value="' + G.genCounts[mt]
-      +   '" oninput="G.genCounts[\'' + mt + '\']=parseInt(this.value)||0" style="width:56px"></label>'
-      + '<label>Max time (min)<input type="number" min="5" max="180" step="5" value="' + G.genMaxTime[mt]
-      +   '" oninput="G.genMaxTime[\'' + mt + '\']=parseInt(this.value)||null" style="width:64px"></label>'
-      + '<label>Craving/note (optional)<input type="text" maxlength="200" placeholder="e.g. something spicy" value="' + esc(G.genComments[mt])
-      +   '" oninput="G.genComments[\'' + mt + '\']=this.value" style="width:220px"></label>'
+  if (G.genScreen === 'cravings') return renderGenScreenCravings();
+  if (G.genScreen === 'feed') return renderGenScreenFeed();
+  return renderGenScreenCounts();
+}
+
+function genTotalMeals() {
+  return (G.genCounts.breakfast || 0) + (G.genCounts.lunch || 0) + (G.genCounts.dinner || 0);
+}
+
+function genSetCount(mt, delta) {
+  G.genCounts[mt] = Math.max(0, Math.min(7, (G.genCounts[mt] || 0) + delta));
+  renderGenerateForm();
+}
+
+function genSetPeople(delta) {
+  G.genPeople = Math.max(1, Math.min(12, (G.genPeople || 2) + delta));
+  renderGenerateForm();
+}
+
+function renderGenScreenCounts() {
+  var total = genTotalMeals();
+  var cards = GEN_MEAL_TYPES.map(function(mt) {
+    var count = G.genCounts[mt] || 0;
+    var icon = GEN_MEAL_ICONS[mt];
+    var sub = count > 0 ? (count + ' this week · ≤ ' + G.genMaxTime[mt] + ' min') : 'None this week';
+    var timeRow = '';
+    if (count > 0) {
+      var chips = GEN_TIME_OPTS[mt].map(function(m) {
+        var on = G.genMaxTime[mt] === m;
+        return '<button class="gen-time-chip' + (on ? ' on' : '') + '" onclick="G.genMaxTime[\'' + mt + '\']=' + m + ';renderGenerateForm()">' + m + '&prime;</button>';
+      }).join('');
+      timeRow = '<div class="gen-time-row"><span class="gen-time-lbl">⏱ Time to cook</span><div class="gen-time-chips">' + chips + '</div></div>';
+    }
+    return '<div class="gen-meal-card">'
+      + '<div class="gen-meal-top">'
+      + '<div class="gen-meal-icon" style="background:' + icon[1] + '">' + icon[0] + '</div>'
+      + '<div style="flex:1"><div class="gen-meal-lbl">' + GEN_MEAL_LABELS[mt] + '</div><div class="gen-meal-sub">' + esc(sub) + '</div></div>'
+      + '<div class="gen-stepper">'
+      + '<button class="gen-step-btn" onclick="genSetCount(\'' + mt + '\',-1)" aria-label="Fewer ' + mt + '">−</button>'
+      + '<div class="gen-step-count' + (count > 0 ? ' on' : '') + '">' + count + '</div>'
+      + '<button class="gen-step-btn" onclick="genSetCount(\'' + mt + '\',1)" aria-label="More ' + mt + '">+</button>'
+      + '</div></div>'
+      + timeRow
       + '</div>';
   }).join('');
 
   var html = '<div class="gen-view">'
-    + '<div class="day-h">✨ Generate meals with AI</div>'
-    + '<div class="day-sub">How many of each meal do you want this batch? mesa suggests two options for each — pick which recipe goes on which day below, all on this screen.</div>'
-    + '<div class="gen-form"><label>People eating<input type="number" min="1" max="12" value="' + G.genPeople
-    +   '" oninput="G.genPeople=parseInt(this.value)||2" style="width:56px"></label></div>'
-    + '<div class="gen-form"><label>Ingredients you already have (optional, one per line)'
-    +   '<textarea maxlength="1000" rows="3" placeholder="500g rice&#10;2 avocados&#10;chicken breast" '
-    +   'oninput="G.genPantry=this.value" style="width:100%;font:inherit;padding:8px">' + esc(G.genPantry) + '</textarea>'
-    +   '</label></div>'
-    + rows
-    + '<button class="gen-go" onclick="runGenerateRecipes()">Generate options</button>'
+    + '<div class="gen-progress-bar"><div class="seg on"></div><div class="seg"></div><div class="gen-progress-lbl">1 / 2</div></div>'
+    + '<div class="day-h">What should mesa cook this week?</div>'
+    + '<div class="day-sub">Counts and how long you\'re happy to spend at the stove.</div>'
+    + '<div style="margin-top:18px">' + cards + '</div>'
+    + '<div class="gen-people-row"><div class="gen-people-lbl">👥 Cooking for</div>'
+    + '<div class="gen-people-ctl">'
+    + '<button class="gen-people-btn" onclick="genSetPeople(-1)" aria-label="Fewer people">−</button>'
+    + '<div class="gen-people-count">' + G.genPeople + '</div>'
+    + '<button class="gen-people-btn" onclick="genSetPeople(1)" aria-label="More people">+</button>'
+    + '</div></div>'
+    + '<button class="gen-go' + (total > 0 ? '' : ' off') + '" onclick="genGoCravings()">Next · cravings &amp; pantry</button>'
+    + '<div class="gen-skip-link" onclick="genSurpriseMe()">Skip — just surprise me ✨</div>'
+    + '</div>';
+  setMain(html);
+}
+
+function genGoCravings() {
+  if (genTotalMeals() === 0) return;
+  G.genScreen = 'cravings';
+  renderGenerateForm();
+}
+
+function genSurpriseMe() {
+  if (genTotalMeals() === 0) G.genCounts = {breakfast: 0, lunch: 0, dinner: 2};
+  runGenerateRecipes();
+}
+
+function genToggleCraving(id) {
+  var i = G.genCravings.indexOf(id);
+  if (i === -1) G.genCravings.push(id); else G.genCravings.splice(i, 1);
+  renderGenerateForm();
+}
+
+function renderGenScreenCravings() {
+  var total = genTotalMeals();
+  var chips = CRAVING_CHIPS.map(function(c) {
+    var on = G.genCravings.indexOf(c.id) >= 0;
+    return '<span class="gen-craving-chip' + (on ? ' on' : '') + '" onclick="genToggleCraving(\'' + c.id + '\')">' + c.label + '</span>';
+  }).join('');
+
+  var html = '<div class="gen-view">'
+    + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:2px">'
+    + '<div class="gen-back" onclick="G.genScreen=\'counts\';renderGenerateForm()">←</div>'
+    + '<div class="gen-progress-bar" style="flex:1;margin-bottom:0"><div class="seg on"></div><div class="seg on"></div></div>'
+    + '<div class="gen-progress-lbl">2 / 2</div>'
+    + '</div>'
+    + '<div class="day-h" style="margin-top:12px">In the mood for anything?</div>'
+    + '<div class="day-sub">Optional — tap what sounds good.</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px">' + chips + '</div>'
+    + '<div class="gen-form" style="margin-top:10px"><input type="text" maxlength="200" placeholder="A craving, or anything the chef should keep in mind…" value="' + esc(G.genNote)
+    +   '" oninput="G.genNote=this.value" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:999px;border:1.5px dashed var(--brd2);background:var(--wht);font-size:.8rem;color:var(--txt)"></div>'
+    + '<div class="slbl acc" style="margin-top:22px">🧺 Use up what you have</div>'
+    + '<div class="gen-pantry-box">'
+    +   '<div class="gen-pantry-chips">' + G.genPantryChips.map(function(item, i) {
+          return '<span class="gen-pantry-chip">' + esc(item.raw) + '<span class="x" onclick="genRemovePantryChip(' + i + ')">✕</span></span>';
+        }).join('') + '</div>'
+    +   '<input type="text" class="gen-pantry-add" maxlength="60" placeholder="＋ add an ingredient, press Enter" value="' + esc(G.genPantryInput)
+    +     '" oninput="G.genPantryInput=this.value" onkeydown="genPantryKeydown(event)">'
+    +   '<div class="gen-pantry-hint">The chef will try to suggest recipes using these — and your shopping list will count them as already at home.</div>'
+    + '</div>'
+    + '<button class="gen-go" style="margin-top:20px" onclick="runGenerateRecipes()">Get ' + (2 * total) + ' idea' + (2 * total === 1 ? '' : 's') + ' for my ' + total + ' meal' + (total === 1 ? '' : 's') + ' ✨</button>'
+    + '<div style="text-align:center;font-size:.74rem;color:var(--hnt);margin-top:10px">mesa writes 2 ideas for every meal you ask for — pick your favourites, any day you like.</div>'
+    + '</div>';
+  setMain(html);
+}
+
+function genAdjustAndRegenerate() {
+  G.genResults = {};
+  G.genAssignments = {};
+  G.genProgress = null;
+  G.genActiveJobId = null;
+  localStorage.removeItem('mesa-last-gen-job');
+  localStorage.removeItem('mesa-gen-discarded');
+  G.genScreen = 'counts';
+  renderGenerateForm();
+}
+
+function renderGenScreenFeed() {
+  var html = '<div class="gen-view">'
+    + '<div class="day-h">Your suggestions</div>'
+    + '<div class="day-sub">Pick your favourites, any day you like.</div>'
     + '<div id="gen-results"></div>'
+    + '<div class="gen-skip-link" onclick="genAdjustAndRegenerate()">↻ Adjust &amp; regenerate</div>'
     + '</div>';
   setMain(html);
   renderGenerateResults(); // restore whatever was already generated this session, if anything
@@ -1841,9 +2119,13 @@ async function pollGenerationJob(jobId) {
       return;
     }
     var busy = (Date.now() - startedAt) > GEN_BUSY_THRESHOLD_MS;
-    if (busy && !shownAny) {
-      var busyEl = genResultsEl();
-      if (busyEl) busyEl.innerHTML = '<div class="loader"><div class="spin"></div><span>The kitchen is busy right now — we\'ll email you when your options are ready. Feel free to close this tab.</span></div>';
+    // Swap to the "we'll email you" copy without wiping whatever's already
+    // rendered (skeleton cards show from t=0 now — a real bug this would've
+    // caused: destroying them here right when the user's been waiting the
+    // longest). Just flips a flag the progress banner reads.
+    if (busy && !G.genBusyNote) {
+      G.genBusyNote = true;
+      renderGenerateResults();
     }
     await new Promise(function(resolve) { setTimeout(resolve, busy ? GEN_POLL_BACKOFF_MS : GEN_POLL_INTERVAL_MS); });
     if (G.genActiveJobId !== jobId) return;
@@ -1930,11 +2212,11 @@ async function maybeResumeLastGenJob() {
   }
 }
 
-// Lightweight, forgiving line parser for the pantry textarea — not a
+// Lightweight, forgiving parser for one pantry chip's typed text — not a
 // guardrail (guardrails.sanitize_pantry_ingredients on the backend is the
 // real content check), just a best-effort split of "500g rice" into
 // {name, qty, unit} so the model gets a structured hint instead of a raw
-// blob of text. A line with no leading number (e.g. "chicken breast") is
+// blob of text. Text with no leading number (e.g. "chicken breast") is
 // still sent, just with qty/unit null.
 function parsePantryLine(line) {
   line = line.trim();
@@ -1951,8 +2233,30 @@ function parsePantryLine(line) {
   return { name: rest, qty: qty, unit: unit };
 }
 
-function parsePantryText(text) {
-  return (text || '').split('\n').map(parsePantryLine).filter(Boolean);
+function genPantryKeydown(e) {
+  if (e.key !== 'Enter' || !G.genPantryInput.trim()) return;
+  var parsed = parsePantryLine(G.genPantryInput);
+  if (parsed) G.genPantryChips.push(Object.assign({raw: G.genPantryInput.trim()}, parsed));
+  G.genPantryInput = '';
+  renderGenerateForm();
+}
+
+function genRemovePantryChip(i) {
+  G.genPantryChips.splice(i, 1);
+  renderGenerateForm();
+}
+
+// Chip labels carry a leading emoji ("🍚 Something with rice") purely for
+// display — strip it before sending to the backend so the model sees plain
+// text. Combined with the free note into one shared string sent to EVERY
+// slot regardless of meal type (design's consolidation, confirmed by the
+// user — replaces the old per-meal-type comment boxes).
+function buildSharedComment() {
+  var parts = CRAVING_CHIPS
+    .filter(function(c) { return G.genCravings.indexOf(c.id) >= 0; })
+    .map(function(c) { return c.label.replace(/^\S+\s+/, ''); });
+  if (G.genNote && G.genNote.trim()) parts.push(G.genNote.trim());
+  return parts.length ? parts.join(', ') : undefined;
 }
 
 async function runGenerateRecipes() {
@@ -1961,21 +2265,33 @@ async function runGenerateRecipes() {
   // await and exit silently on mismatch), so a new batch can never get its
   // results interleaved with a stale one's.
   G.genActiveJobId = null;
-  var resultsEl = document.getElementById('gen-results');
-  resultsEl.innerHTML = '<div class="loader"><div class="spin"></div><span>Thinking of something good…</span></div>';
   // Fresh batch starting — reset once here, not inside applyGenerationResult
   // (which now runs repeatedly as slots trickle in and must never wipe
   // day-picks the user already made on an earlier partial update).
   G.genResults = {};
   G.genAssignments = {};
   G.genProgress = null;
+  G.genBusyNote = false;
   G.genDiscarded = new Set();
+  G.genExpanded = {};
+  G.genDismissMenu = null;
   localStorage.removeItem('mesa-gen-discarded');
 
   var dayCodes = ['mon','tue','wed','thu','fri','sat','sun'];
+  // 2026-07-20, user-requested: the first 3 breakfast slots always cover one
+  // fixed category each (yogurt/toast/eggs) instead of 3 independently-
+  // converging picks — a 4th+ breakfast slot gets normal free variety
+  // (no category). See generate_recipes.py's BREAKFAST_CATEGORY_KEYWORDS.
+  var BREAKFAST_FIXED_CATEGORIES = ['yogurt', 'toast', 'eggs'];
+  // 2026-07-21, user-requested: requesting 1 breakfast still generates a
+  // minimum of 2 — one is rarely enough real choice. Mutates G.genCounts
+  // itself (not just a local override) so the section header/progress
+  // counters below (which read G.genCounts[mt] directly) stay consistent
+  // with how many slots were actually requested.
+  if (G.genCounts.breakfast > 0 && G.genCounts.breakfast < 2) G.genCounts.breakfast = 2;
   var slots = [];
+  var sharedComment = buildSharedComment();
   GEN_MEAL_TYPES.forEach(function(mt) {
-    var comment = (G.genComments[mt] || '').trim() || undefined;
     var maxTime = G.genMaxTime[mt] || undefined;
     for (var i = 0; i < (G.genCounts[mt] || 0); i++) {
       // Placeholder day, cycling through the week — the backend doesn't use
@@ -1985,16 +2301,29 @@ async function runGenerateRecipes() {
       // Comment/max_time are shared by every slot of this meal type in the
       // batch — the backend re-checks the comment against DANGEROUS_TERMS
       // regardless.
-      slots.push({day: dayCodes[i % 7], meal_type: mt, comment: comment, max_time_minutes: maxTime});
+      var breakfastCategory = (mt === 'breakfast' && i < 3) ? BREAKFAST_FIXED_CATEGORIES[i] : undefined;
+      slots.push({day: dayCodes[i % 7], meal_type: mt, comment: sharedComment, max_time_minutes: maxTime, breakfast_category: breakfastCategory});
     }
   });
+
+  G.genScreen = 'feed';
   if (!slots.length) {
-    resultsEl.innerHTML = '<div class="empty">Set at least one meal count above.</div>';
+    renderGenerateForm();
+    var emptyEl = document.getElementById('gen-results');
+    if (emptyEl) emptyEl.innerHTML = '<div class="empty">Set at least one meal count above.</div>';
     return;
   }
+  // Skeleton counts are driven by G.genCounts, already known client-side —
+  // no need to wait for the server's own totals (the first poll response)
+  // before showing them. Was a "Thinking of something good…" spinner here,
+  // which the user correctly flagged as a delay with no real information;
+  // this renders real per-section skeleton cards immediately instead.
+  G.genProgress = {completed: 0, total: slots.length};
+  renderGenerateForm();
+  var resultsEl = document.getElementById('gen-results');
 
   try {
-    var pantry = parsePantryText(G.genPantry);
+    var pantry = G.genPantryChips.map(function(c) { return {name: c.name, qty: c.qty, unit: c.unit}; });
     G._pendingPantryUpsert = pantry.length ? pantry : null;
     var accepted = await apiFetch('/api/generate-recipes', {method:'POST', body: JSON.stringify({
       week_start: G.week.week_start,
@@ -2012,6 +2341,46 @@ async function runGenerateRecipes() {
   }
 }
 
+// Cheap client-side string-overlap heuristic (mirrors the design prototype's
+// usesLabel) — purely cosmetic, no backend involvement. Pantry is per-
+// request/this-batch only (see genPantryChips), so this only ever reflects
+// what the user just typed for THIS generation, never a stale prior week's.
+function genPantryMatchLabel(opt) {
+  if (!G.genPantryChips.length || !opt.ingredients || !opt.ingredients.length) return null;
+  var pantryWords = [];
+  G.genPantryChips.forEach(function(p) {
+    (p.name || '').toLowerCase().split(/[\s\d]+/).forEach(function(w) {
+      if (w.length > 3) pantryWords.push(w.replace(/s$/, ''));
+    });
+  });
+  var ingText = opt.ingredients.map(function(i) { return i.name || ''; }).join(' ').toLowerCase();
+  var hits = [];
+  pantryWords.forEach(function(w) {
+    if (ingText.indexOf(w) >= 0 && hits.indexOf(w) === -1) hits.push(w);
+  });
+  return hits.length ? ('Uses your ' + hits.slice(0, 2).join(' + ') + ' ✓') : null;
+}
+
+function genToggleIngExpand(optId) {
+  G.genExpanded[optId] = !G.genExpanded[optId];
+  renderGenerateResults();
+}
+
+function genAskDismiss(optId) {
+  G.genDismissMenu = optId;
+  renderGenerateResults();
+}
+
+function genCancelDismiss() {
+  G.genDismissMenu = null;
+  renderGenerateResults();
+}
+
+function genConfirmDismiss(optId, mealType) {
+  G.genDismissMenu = null;
+  discardOption(optId, mealType);
+}
+
 function renderGenerateResults() {
   var resultsEl = document.getElementById('gen-results');
   if (!resultsEl || !G.genResults) return;
@@ -2021,111 +2390,321 @@ function renderGenerateResults() {
   var progressBanner = '';
   var stillCooking = G.genProgress && G.genProgress.completed < G.genProgress.total;
   if (stillCooking) {
+    // Deliberately no "X of Y" count here (2026-07-18, user feedback): Y was
+    // in SLOT units (e.g. 2 requested dinners) while the section below
+    // counts OPTIONS (4 cards for those same 2 slots) — the mismatch read as
+    // a bug, not progress. Real per-section "N of M planned" counts (option
+    // units, always correct) already show once real cards start arriving.
+    var progressTxt = G.genBusyNote
+      ? 'The kitchen is busy right now — we\'ll email you when everything\'s ready. Feel free to close this tab.'
+      : '👨‍🍳 Selecting your options for this week…';
     progressBanner = '<div class="gen-progress" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;color:var(--mut);font-size:.85rem">'
       + '<div class="spin" style="width:14px;height:14px;border-width:2px"></div>'
-      + '<span>👨‍🍳 ' + G.genProgress.completed + ' of ' + G.genProgress.total + ' meals ready — still cooking the rest…</span>'
+      + '<span>' + progressTxt + '</span>'
       + '</div>';
   }
 
-  var dayButtons = function(opt, mealType) {
+  var dayPills = function(opt, mealType) {
     return DAY_ORDER.map(function(d) {
       var code = _DAY_CODE[d];
-      var on = G.genAssignments[opt.id] === code;
-      return '<button onclick="event.stopPropagation();assignOptionToDay(\'' + esc(opt.id) + '\',\'' + code + '\',\'' + mealType + '\')" style="'
-        + (on ? 'background:var(--acc);color:#fff;' : 'background:var(--srf);color:var(--txt);')
-        + 'border:none;border-radius:6px;padding:4px 7px;margin:2px 2px 0 0;font-size:.7rem;font-weight:600;cursor:pointer">'
-        + d.slice(0,2) + '</button>';
+      var assigned = G.genAssignments[opt.id] || [];
+      var on = assigned.some(function(a) { return a.day === code; });
+      var dateNum = (function() { var dt = _mealDate(G.week.week_start, d); return dt ? dt.getDate() : ''; })();
+      // Blocked when this exact (day, meal_type) is already spoken for —
+      // by another staged pick in this batch, or a meal already committed
+      // from before — never across different meal types on the same day.
+      // Never blocked by THIS SAME option's own other days (genDayTaken
+      // excludes opt.id) — repeating one option across several days is
+      // exactly what this is for, for every meal type (2026-07-20: was
+      // breakfast-only, extended to lunch/dinner too on user request — if
+      // someone loves a dish, they should be able to cook it more than once
+      // in the same week).
+      if (!on && genDayTaken(code, mealType, opt.id)) {
+        return '<span class="sug-day taken"><span class="nm">' + d.slice(0, 3) + '</span>✓</span>';
+      }
+      // Selected days render green+tick (2026-07-19, user feedback: B3's
+      // hide-row/change-link pattern wasn't clear) — the tick REPLACES the
+      // date number so "selected" reads unambiguously, never just a tint.
+      return '<button class="sug-day' + (on ? ' sel' : '') + '" onclick="event.stopPropagation();genToggleDay(\'' + esc(opt.id) + '\',\'' + code + '\',\'' + mealType + '\')">'
+        + '<span class="nm">' + d.slice(0, 3) + '</span>' + (on ? '✓' : dateNum)
+        + '</button>';
     }).join('');
   };
 
   var sections = GEN_MEAL_TYPES.map(function(mt) {
     var opts = (G.genResults[mt] || []).filter(function(o) { return !G.genDiscarded.has(o.id); });
-    if (!opts.length) return '';
+    var requested = G.genCounts[mt] || 0;
+    if (!requested) return '';
+    // Breakfast asks for 1 option per slot, not 2 — matches the backend's
+    // options_needed split (less redundant generation for a meal that
+    // tolerates far more repetition than lunch/dinner).
+    var optsPerSlot = mt === 'breakfast' ? 1 : 2;
+    var wantOptions = optsPerSlot * requested;
+    var skeletonCount = stillCooking ? Math.max(0, wantOptions - opts.length) : 0;
+
+    var planned = opts.filter(function(o) { return G.genAssignments[o.id] && G.genAssignments[o.id].length; }).length;
+    var done = planned >= requested;
+    var progressPill = '<span class="sug-progress ' + (done ? 'done' : 'todo') + '">'
+      + (done ? (requested + ' of ' + requested + ' planned ✓') : (planned + ' of ' + requested + ' planned')) + '</span>';
+
     var cards = opts.map(function(opt) {
-      var img = opt.image_url
-        ? '<img class="meal-card-img" src="' + esc(opt.image_url) + '" alt="" loading="lazy">'
-        : '<div class="meal-card-ph" style="background:var(--srf)">🍽</div>';
-      var estMeta = [];
-      if (opt.time) estMeta.push('⏱ ' + esc(opt.time));
-      if (opt.kcal) estMeta.push('🔥 ' + esc(opt.kcal) + ' kcal');
-      var assignedDay = G.genAssignments[opt.id];
-      var ingList = '';
-      if (opt.ingredients && opt.ingredients.length) {
-        ingList = '<ul style="list-style:none;padding:0;margin:6px 0 0">' + opt.ingredients.map(function(ing) {
-          return '<li style="display:flex;gap:8px;padding:4px 0;font-size:.82rem;color:var(--txt)">'
-            + '<span style="color:var(--mut);flex-shrink:0">•</span>'
-            + '<span>' + esc(ing.name)
-            + (ing.qty ? ' <span style="font-weight:400;color:var(--mut)">' + esc(fmtQtyUnit(ing)) + '</span>' : '')
-            + '</span></li>';
-        }).join('') + '</ul>';
+      var photoStyle = opt.image_url ? 'background-image:url(\'' + esc(opt.image_url) + '\')' : '';
+      var photoInner = opt.image_url ? '' : '<span class="ph-emoji">🍽</span>';
+      var badgeCls = opt.status === 'complete' ? 'pool' : 'new';
+      var badgeTxt = opt.status === 'complete' ? 'From your pool' : 'New idea';
+      var chips = [];
+      if (opt.time) chips.push('<span class="sug-chip">⏱ ' + esc(opt.time) + '</span>');
+      // opt.kcal is the TOTAL for the whole recipe as written, at base_serves
+      // (same backend convention as recipes.kcal elsewhere) — every other kcal
+      // display in the app (confirmed recipe, shopping list, favourites) shows
+      // per-person and labels it so; this card was the one place still
+      // showing the raw total unlabeled (real bug found live: "2450 kcal"
+      // read as one absurd serving instead of ~1225/person for 2).
+      if (opt.kcal) {
+        var perPersonKcal = Math.round(opt.kcal / (opt.base_serves || 2));
+        chips.push('<span class="sug-chip">🔥 ' + esc(perPersonKcal) + ' kcal/person</span>');
       }
-      var discardBtn = assignedDay ? '' : (
-        '<button class="gen-opt-discard" onclick="event.stopPropagation();discardOption(\'' + esc(opt.id) + '\',\'' + mt + '\')" aria-label="Not interested" title="Don\'t show this again">✕</button>'
+      var usesLabel = genPantryMatchLabel(opt);
+      if (usesLabel) chips.push('<span class="sug-chip uses">' + esc(usesLabel) + '</span>');
+
+      var ings = opt.ingredients || [];
+      var expanded = !!G.genExpanded[opt.id];
+      var ingHtml = '';
+      if (ings.length) {
+        var firstThree = ings.slice(0, 3).map(function(i) { return i.name; }).join(' · ');
+        var moreLabel = ings.length > 3 ? (expanded ? 'show less' : '+' + (ings.length - 3) + ' more') : '';
+        ingHtml = '<div class="sug-ing">' + esc(firstThree)
+          + (moreLabel ? ' <span class="sug-more" onclick="event.stopPropagation();genToggleIngExpand(\'' + esc(opt.id) + '\')">' + moreLabel + '</span>' : '')
+          + '</div>';
+        if (expanded) {
+          ingHtml += '<div class="sug-ing-full">' + ings.map(function(ing) {
+            return '<div class="sug-ing-row"><span>' + esc(ing.name) + '</span><span class="q">' + esc(fmtQtyUnit(ing)) + '</span></div>';
+          }).join('') + '</div>';
+        }
+      }
+
+      var assignments = G.genAssignments[opt.id] || [];
+      var dismissStrip = (G.genDismissMenu === opt.id)
+        ? '<div class="sug-dismiss">'
+          + '<div class="sug-dismiss-txt">Not your thing? mesa won\'t suggest it again.</div>'
+          + '<div class="sug-dismiss-row">'
+          + '<button class="sug-dismiss-yes" onclick="event.stopPropagation();genConfirmDismiss(\'' + esc(opt.id) + '\',\'' + mt + '\')">🚫 Don\'t suggest again</button>'
+          + '<button class="sug-dismiss-no" onclick="event.stopPropagation();genCancelDismiss()">Keep it</button>'
+          + '</div></div>'
+        : '';
+      var xBtn = assignments.length ? '' : (
+        '<button class="sug-x" onclick="event.stopPropagation();genAskDismiss(\'' + esc(opt.id) + '\')" aria-label="Not interested" title="Don\'t show this again">🚫</button>'
       );
-      return '<div class="meal-card gen-opt">'
-        + discardBtn
-        + img
-        + '<div class="meal-card-body">'
-        + '<div class="meal-card-type">' + (opt.status === 'complete' ? 'From your recipe pool' : 'New idea') + '</div>'
-        + '<div class="meal-card-ttl">' + esc(opt.title) + '</div>'
-        + '<div class="meal-card-meta">' + esc(opt.brief_description) + '</div>'
-        + (estMeta.length ? '<div class="meal-card-meta">' + estMeta.join(' · ') + '</div>' : '')
-        + ingList
-        + '<div style="margin-top:8px">' + dayButtons(opt, mt) + '</div>'
-        + (assignedDay ? '<div class="meal-card-meta" style="color:var(--acc);font-weight:600;margin-top:4px">Added to ' + esc(_CODE_TO_DAY[assignedDay]) + ' ✓</div>' : '')
+
+      // Always-visible day row (2026-07-19, user feedback: B3's hide-row/
+      // change-link pattern wasn't clear enough). The 7-day pill row never
+      // collapses; selection state lives entirely in the pill itself
+      // (green + tick, see dayPills above). Every meal type is multi-select
+      // (2026-07-20, was breakfast-only) — every tap toggles independently,
+      // adding or removing that one day.
+      var pickerBlock = '<div class="slbl" style="margin:12px 0 7px">Cook it on…</div><div class="sug-days">' + dayPills(opt, mt) + '</div>';
+
+      // Variations (P3, 2026-07-19; extended same day beyond breakfast-only
+      // to any meal type — e.g. rice vs noodles alongside a stir-fry): one
+      // compact row per SELECTED day, only when this option actually
+      // carries variations — lets a repeated breakfast vary (different
+      // nuts/fruit/toast toppings) or a lunch/dinner offer a genuine
+      // accompaniment choice, instead of being identical every time.
+      var variationsBlock = '';
+      if ((opt.variations || []).length && assignments.length) {
+        variationsBlock = '<div class="sug-vars">' + assignments.map(function(a) {
+          var current = a.variation || '';
+          var opts2 = ['<option value=""' + (current === '' ? ' selected' : '') + '>Original</option>']
+            .concat((opt.variations || []).map(function(v) {
+              return '<option value="' + esc(v.name) + '"' + (current === v.name ? ' selected' : '') + '>' + esc(v.name) + '</option>';
+            }));
+          return '<div class="sug-var-row"><span class="sug-var-day">' + esc(_CODE_TO_DAY[a.day]) + '</span>'
+            + '<select onclick="event.stopPropagation()" onchange="event.stopPropagation();genSetVariation(\'' + esc(opt.id) + '\',\'' + a.day + '\',this.value)">'
+            + opts2.join('') + '</select></div>';
+        }).join('') + '</div>';
+      }
+
+      return '<div class="sug-card">'
+        + '<div class="sug-photo' + (opt.image_url ? '' : ' loading') + '" style="' + photoStyle + '">' + photoInner
+        + '<span class="sug-badge ' + badgeCls + '">' + esc(badgeTxt) + '</span>'
+        + xBtn
+        + '</div>'
+        + dismissStrip
+        + '<div class="sug-body">'
+        + '<div class="sug-ttl">' + esc(opt.title) + '</div>'
+        + (chips.length ? '<div class="sug-chips">' + chips.join('') + '</div>' : '')
+        + ingHtml
+        + pickerBlock
+        + variationsBlock
         + '</div></div>';
     }).join('');
-    return '<div class="gen-slot-h" style="font-weight:700;margin:14px 0 8px">' + GEN_MEAL_LABELS[mt] + '</div>' + cards;
+
+    var skeletons = '';
+    for (var i = 0; i < skeletonCount; i++) {
+      skeletons += '<div class="sug-skel"><div class="sug-skel-thumb"></div>'
+        + '<div><div class="sug-skel-txt">Writing a ' + mt + ' idea ✍️…</div>'
+        + '<div class="sug-skel-sub">Feel free to leave — ideas are saved as they finish.</div></div></div>';
+    }
+
+    return '<div style="margin:20px 0"><div class="sug-sec-hdr">'
+      + '<div class="sug-sec-lbl"><span class="n">' + GEN_MEAL_LABELS[mt] + ' ideas</span>'
+      + '<span class="m">≤ ' + G.genMaxTime[mt] + ' min · pick ' + requested + ' of ' + wantOptions + ', any day</span></div>'
+      + progressPill + '</div>' + '<div class="sug-grid">' + cards + skeletons + '</div></div>';
   }).join('');
 
   // While still cooking with nothing ready yet, don't show the "try again"
   // empty state — that's only a real dead-end once nothing is coming.
   var emptyMsg = stillCooking ? '' : '<div class="empty">No options came back — try again.</div>';
-  resultsEl.innerHTML = progressBanner + (sections || emptyMsg);
+
+  // Counts total DAYS staged (flattened), not distinct options — repeating
+  // one breakfast across 3 days is genuinely "3 meals" about to be added.
+  var plannedTotal = 0;
+  GEN_MEAL_TYPES.forEach(function(mt) {
+    (G.genResults[mt] || []).forEach(function(o) { plannedTotal += (G.genAssignments[o.id] || []).length; });
+  });
+  var confirmBtn = plannedTotal > 0
+    ? '<button class="gen-go confirm" onclick="confirmGeneratedMenu()">Looks good — confirm my menu (' + plannedTotal + ' meal' + (plannedTotal === 1 ? '' : 's') + ') ✓</button>'
+    : '';
+
+  resultsEl.innerHTML = progressBanner + (sections || emptyMsg) + confirmBtn;
 }
 
-async function assignOptionToDay(recipeId, day, mealType) {
-  try {
-    var targetServes = G.genPeople || undefined;
-    var result = await apiFetch('/api/select-recipe', {method:'POST', body: JSON.stringify({
-      week_id: G.week.id,
-      week_start: G.week.week_start,
-      day: day,
-      meal_type: mealType,
-      recipe_id: recipeId,
-      target_serves: targetServes
-    })});
-    G.genAssignments[recipeId] = day;
-    renderGenerateResults();
-    // steps_ready=false means it's in the week already, but its step-by-step
-    // instructions are still being generated in the background — the day
-    // view itself already shows a "chef is preparing" placeholder for that,
-    // so no extra UI needed here beyond the normal "Added ✓" confirmation.
-
-    // Mirror what select-recipe just wrote server-side into G.week.meals
-    // in-memory, then re-hydrate + refresh just the day-nav pills — a real
-    // bug found live: without this, a newly-assigned day never showed up in
-    // the day-nav bar until a full manual reload, since assigning a day
-    // deliberately doesn't navigate away/reload the whole week (that would
-    // wipe the other still-pending options on this same Generate screen).
-    var entryId = day + '-' + mealType;
-    G.week.meals = (G.week.meals || []).filter(function(m) { return m.id !== entryId; });
-    G.week.meals.push({
-      id: entryId,
-      label: _CODE_TO_DAY[day],
-      recipe_id: recipeId,
-      people: targetServes || null,
-      meal_type: mealType,
-      avail: [],
-      remaining: [],
-      time: result.time,
-      kcal: result.kcal,
-    });
-    await hydrateMeals([G.week]);
-    renderDayNav(G.week);
-  } catch(e) {
-    alert('Couldn\'t save that pick: ' + e.message);
+// R4 (2026-07-18): staging only, no server write — nothing commits until
+// confirmGeneratedMenu() runs. Was an immediate /api/select-recipe call per
+// click; moved so the whole batch can be reviewed and confirmed at once,
+// per the Claude Design handoff.
+//
+// G.genAssignments[optId] is an ARRAY of {day, mealType} (2026-07-18,
+// was a single {day, mealType} object) — one option can now be staged onto
+// SEVERAL days at once (user feedback: breakfast tolerates far more
+// repetition than lunch/dinner; kept general rather than breakfast-only,
+// since nothing about it is actually specific to one meal type).
+function genDayTaken(day, mealType, excludeOptId) {
+  for (var optId in G.genAssignments) {
+    if (optId === excludeOptId) continue;
+    var arr = G.genAssignments[optId] || [];
+    if (arr.some(function(a) { return a.day === day && a.mealType === mealType; })) return true;
   }
+  // Also blocks a day that already holds a COMMITTED meal of this same type
+  // from a prior session — matches the confirmed per-(day,meal_type) rule
+  // (select_recipe.py's entry_id) and prevents silently overwriting it.
+  var entryId = day + '-' + mealType;
+  return (G.week.meals || []).some(function(m) { return m.id === entryId; });
+}
+
+// Sets which variation a given selected day uses for a breakfast option
+// (P3, 2026-07-19) — "" means the original/base recipe, stored as undefined
+// on the assignment (never sent as an empty-string variation name).
+function genSetVariation(optId, day, variationName) {
+  var arr = G.genAssignments[optId] || [];
+  var entry = arr.find(function(a) { return a.day === day; });
+  if (!entry) return;
+  entry.variation = variationName || undefined;
+  renderGenerateResults();
+}
+
+// Always-visible green-tick day picker (2026-07-19) — one function handles
+// select/deselect for every meal type; the only branch is how many days can
+// be green at once. Replaces assignOptionToDay/genRemoveDay/genToggleDayPicker.
+function genToggleDay(optId, day, mealType) {
+  var arr = G.genAssignments[optId] || [];
+  var already = arr.some(function(a) { return a.day === day; });
+  if (already) {
+    // Tapping an already-selected day always clears just that day.
+    G.genAssignments[optId] = arr.filter(function(a) { return a.day !== day; });
+    if (!G.genAssignments[optId].length) delete G.genAssignments[optId];
+    renderGenerateResults();
+    return;
+  }
+  if (genDayTaken(day, mealType, optId)) return; // blocked: no G state mutated
+  // 2026-07-20, user-requested: repeating one option across several days is
+  // allowed for every meal type now, not just breakfast — if someone loves
+  // a dinner, they should be able to cook it twice in the same week. Always
+  // adds alongside existing picks; genDayTaken above already prevents two
+  // DIFFERENT options claiming the same (day, mealType) slot.
+  G.genAssignments[optId] = arr.concat([{day: day, mealType: mealType}]);
+  renderGenerateResults();
+}
+
+// Fires once, when the user taps "confirm my menu" — loops every staged
+// pick and commits it via the same /api/select-recipe call assignOptionToDay
+// used to make per-click. Sequential, not parallel: a `partial` recipe
+// kicks off background steps-generation on select, and firing several of
+// those at once for no reason isn't worth the complexity of doing it any
+// other way for what's normally a handful of picks.
+async function confirmGeneratedMenu() {
+  // Flattened: one pick per STAGED DAY, not per option — an option repeated
+  // across 3 days yields 3 picks here, each committed as its own real
+  // /api/select-recipe call (same one-write-per-day-slot model the backend
+  // already expects; nothing new for it to understand).
+  var picks = [];
+  GEN_MEAL_TYPES.forEach(function(mt) {
+    (G.genResults[mt] || []).forEach(function(o) {
+      (G.genAssignments[o.id] || []).forEach(function(a) {
+        picks.push({optId: o.id, day: a.day, mealType: a.mealType, variation: a.variation});
+      });
+    });
+  });
+  if (!picks.length) return;
+
+  var targetServes = G.genPeople || undefined;
+  var failed = [];
+  for (var i = 0; i < picks.length; i++) {
+    var p = picks[i];
+    try {
+      var result = await apiFetch('/api/select-recipe', {method:'POST', body: JSON.stringify({
+        week_id: G.week.id,
+        week_start: G.week.week_start,
+        day: p.day,
+        meal_type: p.mealType,
+        recipe_id: p.optId,
+        target_serves: targetServes,
+        variation: p.variation
+      })});
+      var entryId = p.day + '-' + p.mealType;
+      G.week.meals = (G.week.meals || []).filter(function(m) { return m.id !== entryId; });
+      G.week.meals.push({
+        id: entryId,
+        label: _CODE_TO_DAY[p.day],
+        recipe_id: p.optId,
+        people: targetServes || null,
+        meal_type: p.mealType,
+        avail: [],
+        remaining: [],
+        time: result.time,
+        kcal: result.kcal,
+        variation: p.variation,
+      });
+      // Remove just THIS day from the option's staged array — an option
+      // repeated across several days has other entries still pending.
+      if (G.genAssignments[p.optId]) {
+        G.genAssignments[p.optId] = G.genAssignments[p.optId].filter(function(a) { return a.day !== p.day; });
+        if (!G.genAssignments[p.optId].length) delete G.genAssignments[p.optId];
+      }
+    } catch (e) {
+      failed.push(p.optId + ' (' + p.day + ')'); // left staged so the user can retry just this one
+    }
+  }
+  await hydrateMeals([G.week]);
+  renderDayNav(G.week);
+
+  if (failed.length) {
+    alert(failed.length + ' pick' + (failed.length === 1 ? '' : 's') + " couldn't be saved — still staged below, try confirming again.");
+    renderGenerateResults();
+    return;
+  }
+
+  // Full batch committed — clear the generate session (nothing left to
+  // resume) and hand off to the existing week/day view, same screen any
+  // other selection already lands on. No new "week" screen gets built.
+  G.genResults = {};
+  G.genAssignments = {};
+  G.genProgress = null;
+  G.genScreen = 'counts';
+  G.genActiveJobId = null;
+  localStorage.removeItem('mesa-last-gen-job');
+  localStorage.removeItem('mesa-gen-discarded');
+  goToDayOrFirstSpecial(todayDayLabel());
 }
 
 // "Don't show this again" — 2026-07-16, replaces treating "shown but not
@@ -2209,7 +2788,7 @@ function renderDayOverview(dayLabel) {
       : '<div class="meal-card-ph" style="background:' + (MEAL_TYPE_BG[meal.meal_type] || 'var(--srf)') + '">' + (MEAL_TYPE_ICO[meal.meal_type] || '🍽') + '</div>';
     var meta = [];
     if (meal.time) meta.push('⏱ ' + esc(meal.time));
-    if (meal.kcal) meta.push('🔥 ' + esc(meal.kcal) + ' kcal');
+    if (meal.kcal) meta.push('🔥 ' + esc(meal.kcal) + ' kcal/person');
     if (meal.people) meta.push('👥 ' + esc(meal.people));
     html += '<div class="meal-card" onclick="showDay(\'' + esc(meal.id) + '\')">'
       + img
@@ -2272,7 +2851,7 @@ function renderRecipe(meal) {
   // pills
   html += '<div class="rmeta">';
   if (meal.time)   html += '<span class="pill">⏱ ' + esc(meal.time) + '</span>';
-  if (meal.kcal)   html += '<span class="pill" id="kcal-pill">🔥 ' + esc(meal.kcal) + ' kcal</span>';
+  if (meal.kcal)   html += '<span class="pill" id="kcal-pill">🔥 ' + esc(meal.kcal) + ' kcal/person</span>';
   if (meal.people) {
     if (!G.isPast && !G.isLibView) {
       html += '<span class="pill">'
@@ -2284,6 +2863,7 @@ function renderRecipe(meal) {
       html += '<span class="pill">👥 ' + esc(meal.people) + ' ' + (meal.people === 1 ? 'person' : 'people') + '</span>';
     }
   }
+  if (meal.variation) html += '<span class="pill">· ' + esc(meal.variation) + '</span>';
   html += '</div>';
 
   // Start cooking CTA — only on devices that support the Wake Lock API
@@ -3220,7 +3800,7 @@ function renderLib() {
       var sub    = [];
       if (day || type) sub.push([day, type].filter(Boolean).join(' · '));
       if (m.time)      sub.push('⏱ ' + m.time);
-      if (m.kcal)      sub.push('🔥 ' + m.kcal + ' kcal');
+      if (m.kcal)      sub.push('🔥 ' + m.kcal + ' kcal/person');
       if (m.people)    sub.push('👥 ' + m.people);
       html += '<div class="card">';
       html += '<div class="card-hdr" onclick="toggleCard(\'' + esc(cardId) + '\')">';
@@ -3485,7 +4065,7 @@ async function refreshWeeks() {
     var past    = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'past'; });
     var current = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'current'; });
     var future  = weeks.filter(function(w) { return weekRelative(w.week_start, thisMonday) === 'future'; });
-    var shown   = past.slice(-1).concat(current).concat(future.slice(0,1));
+    var shown   = past.slice(-1).concat(current).concat(future.slice(0,2));
 
     // update carousel if week list changed
     var oldIds = (G.weeks || []).map(function(w) { return w.id; }).join(',');

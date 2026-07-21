@@ -1,3 +1,4 @@
+import re
 from datetime import date, timedelta
 
 from app.models.generate import PantryItem
@@ -65,6 +66,35 @@ ALLOWED_UNITS: frozenset[str] = frozenset(
         "sheet", "sheets", "tin", "pack", "to taste",
     }
 )
+
+
+# 2026-07-19 — real bug found live: a "5 minutes" recipe ("Chocolate Con
+# Churros") whose own steps totaled 48 min. Root cause: a max_time_minutes
+# constraint got honored by LABELING DOWN an inherently-slower dish instead
+# of picking a genuinely quick one. This parser is the shared primitive for
+# every time-honesty check that follows (generation-time rejection, the
+# steps-time reconciliation, and the pool's own time filter) — one place
+# that understands mesa's few real "time" formats ("5 minutes", "45 min",
+# "1 hour 30 min", "2 hours"), not three separate regexes drifting apart.
+_TIME_HOURS_RE = re.compile(r"(\d+)\s*hour")
+_TIME_MINUTES_RE = re.compile(r"(\d+)\s*min")
+
+
+def parse_time_minutes(text: str | None) -> int | None:
+    """None on anything unparseable — callers must treat that as "unknown,
+    don't exclude/reject on it", never as zero."""
+    if not text:
+        return None
+    hours = _TIME_HOURS_RE.search(text)
+    minutes = _TIME_MINUTES_RE.search(text)
+    if not hours and not minutes:
+        return None
+    total = 0
+    if hours:
+        total += int(hours.group(1)) * 60
+    if minutes:
+        total += int(minutes.group(1))
+    return total
 
 
 def validate_ingredient_units(ingredients: list) -> None:

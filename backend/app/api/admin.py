@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-import pool_warmer
 from app.core import db
 from app.core.security import require_admin, require_internal_secret
 from app.services import (
     cloudflare,
     cost_status,
     deepinfra,
+    image_chain,
     provider_quality,
     provider_quota,
     provider_status,
@@ -16,17 +16,21 @@ from app.services import (
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
-@router.post("/pool-warm", dependencies=[Depends(require_internal_secret)])
-async def pool_warm():
-    """ADR 4 — triggered nightly by Cloud Scheduler (see pool_warmer.py)."""
-    return await pool_warmer.run_pool_warmer()
+@router.post("/image-sweep", dependencies=[Depends(require_internal_secret)])
+async def image_sweep():
+    """Durable backstop for orphaned recipe images — triggered every few
+    minutes by Cloud Scheduler (see image_chain.sweep_orphaned_images for the
+    full rationale). Guarantees no recipe stays permanently without a photo,
+    independent of any request lifecycle."""
+    return await image_chain.sweep_orphaned_images()
 
 
 @router.post("/recipe-audit", dependencies=[Depends(require_internal_secret)])
 async def recipe_audit_endpoint():
-    """Part C — on-demand trigger for the same audit run_pool_warmer already
-    piggybacks nightly. Useful right after a manual data fix/backfill,
-    without waiting for the next pool-warm cycle."""
+    """Part C — on-demand trigger for the recipe-quality audit (2026-07-20:
+    the nightly pool_warmer job that used to piggyback this automatically
+    was removed; this manual trigger is now the only way to run it, e.g.
+    right after a manual data fix/backfill)."""
     return await recipe_audit.run_recipe_audit()
 
 

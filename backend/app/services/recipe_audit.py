@@ -14,9 +14,16 @@ guardrail). Judgment-based issues (kcal plausibility, whether a dish has its
 defining ingredients) are flag-and-report ONLY, same as unmapped_ingredients
 — never silently auto-fixed.
 
-Triggered at the end of run_pool_warmer() (exactly when new content is
-created, no extra Cloud Scheduler job) and via POST /api/admin/recipe-audit
-on demand.
+Triggered by Cloud Scheduler (`recipe-audit-nightly`, POST /api/admin/
+recipe-audit) and on demand. 2026-07-20: this used to piggyback on the
+nightly pool_warmer run, which was removed that day along with the whole
+pool-warming feature — briefly left this audit with no automatic trigger at
+all. 2026-07-21, user-requested ("la parte de auditoria tiene que seguir,
+aunque sea pagando"): restored as its own standalone scheduled job, since
+catching real content-quality bugs (e.g. a "cornetto" recipe that never
+baked the dough it claimed to make — found live, see pool_search.py's
+missing_defining_ingredient exclusion) matters independently of whether
+pool-warming itself is still a going concern.
 """
 
 import json
@@ -27,7 +34,7 @@ from pydantic import ValidationError
 
 from app.core import db
 from app.models.recipes import Ingredient
-from app.services import provider_quality, provider_quota, resend_client
+from app.services import cloudflare, deepinfra, provider_quality, provider_quota, resend_client
 from app.services.guardrails import GeneratedRecipeInvalid, validate_ingredient_units
 from app.services.steps_generation import GeneratedStepsInvalid, validate_steps
 
@@ -333,21 +340,22 @@ async def _kcal_findings() -> list[dict]:
     return findings
 
 
-async def _get_watermark() -> datetime:
+async def _get_watermark(key: str = "semantic_check") -> datetime:
     row = await db.pool().fetchrow(
-        "SELECT checked_through FROM recipe_audit_watermark WHERE key = 'semantic_check'"
+        "SELECT checked_through FROM recipe_audit_watermark WHERE key = $1", key
     )
     return row["checked_through"] if row else datetime(1970, 1, 1, tzinfo=UTC)
 
 
-async def _set_watermark(ts: datetime) -> None:
+async def _set_watermark(ts: datetime, key: str = "semantic_check") -> None:
     await db.pool().execute(
         """
         INSERT INTO recipe_audit_watermark (key, checked_through, updated_at)
-        VALUES ('semantic_check', $1, now())
+        VALUES ($2, $1, now())
         ON CONFLICT (key) DO UPDATE SET checked_through = $1, updated_at = now()
         """,
         ts,
+        key,
     )
 
 
@@ -409,27 +417,38 @@ def _filter_self_contradicting(missing: list[str], ingredient_names: list[str]) 
     return kept
 
 
-async def _check_defining_ingredients(row) -> str | None:
+async def _check_defining_ingredients(row, skip_cloudflare: bool = False) -> tuple[str | None, bool]:
     """One free cloudflare.generate_text call (via provider_quota's shared
     quota-checked wrapper, 2026-07-16 — this call site used to bypass any
     cap/logging entirely) — the detective half of the defining-ingredient
     gap (generation_rules.DEFINING_COMPONENTS_RULE is the preventive half).
     Raises on any provider/parse/quota failure; the caller decides whether
-    to advance the watermark past this row."""
+    to advance the watermark past this row.
+
+    Returns (missing_finding, cloudflare_exhausted) — the second value tells
+    _semantic_findings when to stop trying Cloudflare for the REST of this
+    run (2026-07-21, user-requested): text and image calls share the same
+    account-wide daily Neuron pool, so ~100+ rows each re-attempting an
+    already-exhausted Cloudflare (even though every one falls back to paid
+    DeepInfra anyway) wastes real time this run needs to finish promptly,
+    and needlessly keeps hammering a resource real users need for images
+    that same day. skip_cloudflare, once True, goes straight to DeepInfra
+    for the rest of the batch instead of re-discovering the same exhaustion
+    row by row."""
     ingredients = row["ingredients"]
     if not isinstance(ingredients, list) or not ingredients:
         # Already reported by the structural scan (ingredients_not_array /
         # missing ingredients) — no signal to check here, and sending an
         # empty list to the model would just manufacture a guaranteed
         # false "missing everything" flag.
-        return None
+        return None, skip_cloudflare
 
     ingredient_names = [
         i.get("name", "") for i in ingredients if isinstance(i, dict) and i.get("name")
     ]
     names = ", ".join(ingredient_names)
     if not names:
-        return None
+        return None, skip_cloudflare
 
     prompt = (
         f'Dish: "{row["title"]}" ({row["cuisine"] or "unspecified cuisine"}).\n'
@@ -438,9 +457,29 @@ async def _check_defining_ingredients(row) -> str | None:
         'Reply with ONLY a JSON object: {"ok": true|false, "missing": ["..."]}. '
         "missing should list only genuinely dish-defining components, empty if ok is true."
     )
-    raw = await provider_quota.call_cloudflare_text_with_quota(
-        "recipe_audit_defining_ingredients", SEMANTIC_SYSTEM_PROMPT, prompt
-    )
+    cloudflare_exhausted = skip_cloudflare
+    if skip_cloudflare:
+        raw = await deepinfra.generate_text(SEMANTIC_SYSTEM_PROMPT, prompt)
+    else:
+        try:
+            raw = await provider_quota.call_cloudflare_text_with_quota(
+                "recipe_audit_defining_ingredients", SEMANTIC_SYSTEM_PROMPT, prompt
+            )
+        except cloudflare.CloudflareTextQuotaExhausted:
+            cloudflare_exhausted = True
+            raw = await deepinfra.generate_text(SEMANTIC_SYSTEM_PROMPT, prompt)
+        except Exception:
+            # 2026-07-21, user-requested: this check matters enough to pay for
+            # when the free tier is unavailable (a genuine Cloudflare failure,
+            # not necessarily quota) — unlike stub creation/expansion, which
+            # stayed strictly free-only. No quota gate on this fallback: low
+            # volume (bounded by the watermark below, not every recipe every
+            # run) and deliberately allowed to cost real money rather than
+            # silently stop catching bugs like the cornetto case this was
+            # added for. Doesn't set cloudflare_exhausted — a one-off failure
+            # isn't the same as a confirmed daily-allocation signal, so the
+            # next row still gets a fresh chance at the free tier.
+            raw = await deepinfra.generate_text(SEMANTIC_SYSTEM_PROMPT, prompt)
     try:
         result = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
     except (ValueError, json.JSONDecodeError):
@@ -448,12 +487,12 @@ async def _check_defining_ingredients(row) -> str | None:
         # ~1 in 20 calls) — a per-row quirk, not a provider outage. Treat as
         # "couldn't determine" rather than letting it kill the whole batch
         # and stall the watermark on an otherwise-healthy provider.
-        return None
+        return None, cloudflare_exhausted
 
     missing = _filter_self_contradicting(result.get("missing") or [], ingredient_names)
     if result.get("ok", True) or not missing:
-        return None
-    return f"missing: {', '.join(missing)}"
+        return None, cloudflare_exhausted
+    return f"missing: {', '.join(missing)}", cloudflare_exhausted
 
 
 async def _semantic_findings() -> dict:
@@ -477,9 +516,10 @@ async def _semantic_findings() -> dict:
     checked = 0
     error = None
     newest_checked = watermark
+    skip_cloudflare = False
     for row in rows:
         try:
-            missing = await _check_defining_ingredients(row)
+            missing, skip_cloudflare = await _check_defining_ingredients(row, skip_cloudflare)
         except Exception as exc:  # noqa: BLE001 — stop here, retry this batch next run
             error = str(exc)
             break
@@ -490,6 +530,112 @@ async def _semantic_findings() -> dict:
 
     if checked:
         await _set_watermark(newest_checked)
+
+    return {"findings": findings, "checked": checked, "error": error}
+
+
+VARIATION_CHECK_NAME = "missing_natural_variation"
+
+# 2026-07-21, user-requested — real bug found live: "Salmon Teriyaki"
+# (created 2026-07-01) clearly wants a rice-side variation but had none,
+# simply because it predates the whole variations feature (added 2026-07-19,
+# see tools.py's variations schema). Flag-and-report only, same as every
+# other semantic check here — never auto-generates or auto-writes a
+# variation, just surfaces the gap for a human (or a follow-up admin script)
+# to fill in, the same way "Salmon Teriyaki" was fixed by hand.
+VARIATION_SYSTEM_PROMPT = (
+    "You are a culinary expert doing a LIGHT sanity check on recipes for a meal-planning app. "
+    "This recipe currently has NO listed variations. Most recipes genuinely don't need one — your "
+    "job is to catch only the case where a dish CLEARLY has one obvious, extremely common natural "
+    "variant real people make: a genuine accompaniment for a main-protein dish traditionally eaten "
+    "WITH a side but not inherently including one (e.g. grilled/glazed fish or meat usually served "
+    "with rice or noodles), or an extremely common topping/mix-in swap for a breakfast bowl (yogurt, "
+    "porridge). Do NOT flag a dish that is already a complete, self-contained plate (a stew, a "
+    "casserole, a stir-fry that already includes its starch, a sandwich, a salad) just because SOME "
+    "side could theoretically be added — only flag when the omission is genuinely conspicuous. "
+    'Reply with ONLY a JSON object: {"has_obvious_variation": true|false, "suggestion": "..."}. '
+    "suggestion is a short (2-6 word) name for the single most obvious variation, empty string if "
+    "has_obvious_variation is false. If uncertain, answer false."
+)
+
+
+async def _check_missing_variation(row, skip_cloudflare: bool = False) -> tuple[str | None, bool]:
+    """Mirrors _check_defining_ingredients's shape/fallback logic exactly
+    (same Cloudflare-first-then-DeepInfra, same real-exhaustion signal
+    handling) — see that function's docstring for the fallback rationale."""
+    ingredients = row["ingredients"]
+    if not isinstance(ingredients, list) or not ingredients:
+        return None, skip_cloudflare
+
+    names = ", ".join(i.get("name", "") for i in ingredients if isinstance(i, dict) and i.get("name"))
+    if not names:
+        return None, skip_cloudflare
+
+    prompt = (
+        f'Dish: "{row["title"]}" ({row["cuisine"] or "unspecified cuisine"}).\n'
+        f"Ingredients: {names}\n\n"
+        "Does this dish have one obvious, extremely common natural variation it's currently missing?"
+    )
+    cloudflare_exhausted = skip_cloudflare
+    if skip_cloudflare:
+        raw = await deepinfra.generate_text(VARIATION_SYSTEM_PROMPT, prompt)
+    else:
+        try:
+            raw = await provider_quota.call_cloudflare_text_with_quota(
+                "recipe_audit_missing_variation", VARIATION_SYSTEM_PROMPT, prompt
+            )
+        except cloudflare.CloudflareTextQuotaExhausted:
+            cloudflare_exhausted = True
+            raw = await deepinfra.generate_text(VARIATION_SYSTEM_PROMPT, prompt)
+        except Exception:
+            raw = await deepinfra.generate_text(VARIATION_SYSTEM_PROMPT, prompt)
+    try:
+        result = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
+    except (ValueError, json.JSONDecodeError):
+        return None, cloudflare_exhausted
+
+    suggestion = (result.get("suggestion") or "").strip()
+    if not result.get("has_obvious_variation") or not suggestion:
+        return None, cloudflare_exhausted
+    return f"suggested variation: {suggestion}", cloudflare_exhausted
+
+
+async def _variation_findings() -> dict:
+    """Same watermark-bounded design as _semantic_findings, own watermark
+    key so it doesn't share progress with (or get skipped by) that check.
+    Starting at epoch means the first-ever run sweeps the existing backlog
+    of pre-2026-07-19 complete recipes with no variations (66 rows, found
+    live) — bounded by real row count, not unbounded, so this is expected
+    to take a few nightly runs to fully drain, not one giant burst."""
+    watermark = await _get_watermark("variation_check")
+    rows = await db.pool().fetch(
+        """
+        SELECT id, title, cuisine, ingredients, created_at FROM recipes
+        WHERE status = 'complete' AND created_at > $1
+          AND (variations IS NULL OR jsonb_array_length(variations) = 0)
+        ORDER BY created_at ASC
+        """,
+        watermark,
+    )
+
+    findings: list[dict] = []
+    checked = 0
+    error = None
+    newest_checked = watermark
+    skip_cloudflare = False
+    for row in rows:
+        try:
+            suggestion, skip_cloudflare = await _check_missing_variation(row, skip_cloudflare)
+        except Exception as exc:  # noqa: BLE001 — stop here, retry this batch next run
+            error = str(exc)
+            break
+        checked += 1
+        newest_checked = row["created_at"]
+        if suggestion:
+            findings.append(_finding(row["id"], VARIATION_CHECK_NAME, suggestion, row["title"]))
+
+    if checked:
+        await _set_watermark(newest_checked, "variation_check")
 
     return {"findings": findings, "checked": checked, "error": error}
 
@@ -536,8 +682,9 @@ async def run_recipe_audit() -> dict:
     structural = await _structural_findings()
     kcal = await _kcal_findings()
     semantic = await _semantic_findings()
+    variation = await _variation_findings()
 
-    all_findings = structural + kcal + semantic["findings"]
+    all_findings = structural + kcal + semantic["findings"] + variation["findings"]
     new_findings = await _persist_findings(all_findings)
 
     if new_findings:
@@ -551,6 +698,9 @@ async def run_recipe_audit() -> dict:
         "audit_semantic_checked": semantic["checked"],
         "audit_semantic_flags": len(semantic["findings"]),
         "audit_semantic_error": semantic["error"],
+        "audit_variation_checked": variation["checked"],
+        "audit_variation_flags": len(variation["findings"]),
+        "audit_variation_error": variation["error"],
     }
 
 

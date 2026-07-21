@@ -30,15 +30,31 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 # real tool-calling on both providers ("Tool calling is not supported" /
 # "No endpoints found that support tool use") but work via JSON-mode — see
 # _call_json_mode_as_tool_call below.
-OPENROUTER_PAID_MISTRAL_MODEL = "mistralai/mistral-small-24b-instruct-2501"
+#
+# 2026-07-20 — Mistral bumped 2501 -> 3.2 (2506) after the same-day model
+# shootout (see benchmarks/): identical latency and 3/3 contract validity on
+# both DeepInfra and OpenRouter, just a newer build. Free upgrade, no
+# tradeoff found.
+OPENROUTER_PAID_MISTRAL_MODEL = "mistralai/mistral-small-3.2-24b-instruct-2506"
 OPENROUTER_PAID_PHI4_MODEL = "microsoft/phi-4"
 
 DEEPINFRA_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
-DEEPINFRA_MISTRAL_MODEL = "mistralai/Mistral-Small-24B-Instruct-2501"  # casing differs from OpenRouter's slug for the same model
+DEEPINFRA_MISTRAL_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"  # casing differs from OpenRouter's slug for the same model
 DEEPINFRA_PHI4_MODEL = "microsoft/phi-4"
 
 MAX_TOOL_LOOP_TURNS = 6
 MAX_CORRECTIVE_RETRIES = 3
+
+# 2026-07-18 — real bug found live: a batch with pantry items (tabasco,
+# mango) and a "pasta" craving came back as "Pasta con Pollo alla Mango e
+# Tabasco" — an invented mashup, not a real dish. No temperature was set
+# anywhere, so every call ran at each provider's own default (typically
+# 0.7-1.0), which is exactly the kind of setting that encourages "creative"
+# combination of unrelated hints instead of picking one authentic dish and
+# ignoring what doesn't fit. Low but non-zero: 0 would make identical
+# inputs always return the identical dish, killing variety across a batch;
+# this just discourages invention while still allowing normal variation.
+GENERATION_TEMPERATURE = 0.3
 
 # httpx's `timeout=` is an idle/per-chunk timeout, not a total-request
 # deadline — a slow-but-still-trickling-data response can run well past it
@@ -100,7 +116,7 @@ async def _call_openrouter(
     timeout_seconds: int = PROVIDER_CALL_TIMEOUT_SECONDS,
 ) -> dict:
     settings = get_settings()
-    payload = {"model": model, "messages": messages, "tools": tools}
+    payload = {"model": model, "messages": messages, "tools": tools, "temperature": GENERATION_TEMPERATURE}
     if fallback_models:
         payload["models"] = [model, *fallback_models]
     resp = await _post(
@@ -140,7 +156,7 @@ async def _call_groq(messages: list[dict], tools: list[dict]) -> dict:
     resp = await _post(
         GROQ_URL,
         {"Authorization": f"Bearer {settings.groq_api_key}"},
-        {"model": GROQ_MODEL, "messages": messages, "tools": tools},
+        {"model": GROQ_MODEL, "messages": messages, "tools": tools, "temperature": GENERATION_TEMPERATURE},
     )
     resp.raise_for_status()
     return resp.json()
@@ -157,16 +173,62 @@ _JSON_MODE_RECIPE_INSTRUCTION = (
     '"cuisine": string, "main_protein": string, "image_prompt": string, "time": string, '
     '"kcal": integer, "ingredients": [{"name": string, "qty": number, "unit": string, '
     '"scaling": "linear"|"seasoning"|"heat"|"fixed", "tier": "mandatory"|"recommended"|"optional", '
-    '"allergen_tags": [string]}]}. '
+    '"allergen_tags": [string]}], '
+    '"variations": [{"name": string, "add": [{same shape as an ingredient above}], '
+    '"remove": [string], "kcal": integer (optional), "time": string (optional), '
+    '"image_prompt": string (optional)}]}. '
+    "Actively look for variations — most toast/yogurt/egg breakfasts and many mains DO have at least "
+    "one natural variant real people actually make; don't skip this by default. Never an invented/"
+    "random combination. Topping/mix-in swaps for a breakfast (different nuts/fruit on "
+    "yogurt, different toast toppings), or a genuine accompaniment choice for a lunch/dinner (e.g. a "
+    "stir-fry or curry served with rice vs noodles vs flatbread) — 0 to 3 items, each a small DELTA "
+    "from the base recipe (add ingredients, or remove base ingredient NAMES), never a different dish. "
+    "When the base is a main-protein dish that is traditionally eaten WITH a starch or side but "
+    "doesn't inherently include one (chicken satay, grilled fish or chicken, kebab, grilled meats), "
+    "offering side/accompaniment variations (steamed rice, rice noodles, flatbread, a simple salad) "
+    "is exactly the kind of natural variation to include — those dishes are rarely eaten bare. "
+    "Each variation must itself be something people genuinely, commonly make this way — apply the "
+    "same authenticity bar as the base dish itself, not a creative liberty. When a well-known variant "
+    "adds a whole protein/garnish on top of a plainer classic dish (e.g. gazpacho with shrimp, "
+    "carbonara with peas), that variant belongs HERE, in variations — never as the base recipe itself; "
+    "the base recipe must always be the classic/traditional form. Omit or use an empty list whenever "
+    "the recipe genuinely has no natural variations — never invent fake ones just to fill the list. "
+    "Each variation's optional \"kcal\" is the TOTAL kcal for the WHOLE recipe when made with that "
+    "variation instead of the base (same computation method as the top-level kcal) — include it "
+    "whenever the variation meaningfully changes calories (e.g. adding a starchy side), omit it if "
+    "calorie-neutral. Optional \"time\" is the TOTAL time for the whole recipe when made with that "
+    "variation, same format as the top-level time — include it only if the variation genuinely adds "
+    "or removes real prep/cook time (e.g. grilling shrimp), omit it if the time doesn't meaningfully "
+    "change. Optional \"image_prompt\" follows the exact same rules as the top-level image_prompt "
+    "below (finished-plated-dish description, same ending) — include it ONLY when the variation would "
+    "look visibly different in a photo (added a whole new visible ingredient), omit it for changes "
+    "that wouldn't show (e.g. no cilantro, less salt) — the base recipe's own photo is reused for those. "
     "qty must be a JSON number, never a string. unit must be metric only (g, kg, ml, l, tsp, tbsp, "
     "or a plain count like whole/clove/slice/piece) — never imperial. "
+    "title/brief_description/ingredient names/steps must be written in English even if the user's "
+    "own notes or pantry items were written in a different language — translate any foreign-"
+    "language ingredient into its English name. The TITLE must be in English too, with NO exception "
+    "for 'this is the dish's real name' — translate/describe it in English instead (bad: 'Frutta e "
+    "Yogurt', 'Chocolate con Churros' — these are just literal foreign words for 'Fruit and Yogurt', "
+    "'Chocolate with Churros', not special names; good: 'Fruit and Yogurt Bowl', 'Churros with "
+    "Chocolate Sauce'). The only thing allowed to stay non-English is a single word that's already a "
+    "standard English loanword for an internationally-known dish (e.g. 'Paella', 'Risotto', 'Pad "
+    "Thai', 'Sushi', 'Quesadilla') — never a whole foreign-language phrase. Its ingredients/"
+    "description/steps are still written in English regardless. Never include the words "
+    "'breakfast', 'lunch', or 'dinner' in the title itself (bad: 'Asian-Style Breakfast Fried "
+    "Noodles') — the same dish can genuinely be served at a different meal type later, and a "
+    "meal-type word baked into the name reads as wrong once that happens. Name the dish itself. "
     "image_prompt must describe how the FINISHED PLATED DISH visually looks — colours, textures, "
     "garnish, vessel, style — never just the dish name or a one-line ingredient list (bad: 'Beef "
     "Quesadillas'; good: 'Two golden crispy quesadilla wedges on a wooden board, melted cheddar and "
     "seasoned beef visible at the cut edge, chunky guacamole and sour cream on the side'). It must "
     "genuinely depict what makes THIS specific dish visually recognizable as itself, not a generic "
-    "plate of its main ingredient. End it with exactly ', close-up food photography, warm natural "
-    "light, appetizing'."
+    "plate of its main ingredient. If the dish's name is a 'false friend' that commonly means a "
+    "DIFFERENT food in English/international usage (e.g. Spanish tortilla is an egg-and-potato "
+    "omelette, not a Mexican flour tortilla wrap or flatbread), explicitly rule out the wrong "
+    "reading in the prompt itself (e.g. 'a thick Spanish potato omelette, sliced into wedges — an "
+    "egg dish, not a flatbread or wrap') — the image model has no other way to know which one you "
+    "mean. End it with exactly ', close-up food photography, warm natural light, appetizing'."
 )
 _JSON_MODE_STEPS_INSTRUCTION = (
     "\n\nRespond with ONLY a single JSON object, no markdown code fences, no text before or after "
@@ -222,7 +284,12 @@ async def _call_json_mode_as_tool_call(
     # HTTP call, never accumulating across turns.
     json_messages = [dict(m) for m in messages]
     json_messages[0] = {**json_messages[0], "content": json_messages[0]["content"] + instruction}
-    payload = {"model": model, "messages": json_messages, "response_format": {"type": "json_object"}}
+    payload = {
+        "model": model,
+        "messages": json_messages,
+        "response_format": {"type": "json_object"},
+        "temperature": GENERATION_TEMPERATURE,
+    }
     resp = await _post(url, headers, payload, timeout_seconds=timeout_seconds)
     resp.raise_for_status()
     envelope = resp.json()
@@ -264,7 +331,7 @@ async def openrouter_paid_completion(
     recipe_id: str | None = None,
     generation_request_id: str | None = None,
 ) -> tuple[dict, str]:
-    """Paid OpenRouter tier — Mistral Small 24B then Phi-4, both via the
+    """Paid OpenRouter tier — Phi-4 then Mistral Small, both via the
     JSON-mode adapter (neither supports real tool-calling on OpenRouter,
     verified live). Tries both models explicitly here (not OpenRouter's own
     `models:` array fallback used by the old free-tier path) so every
@@ -277,7 +344,13 @@ async def openrouter_paid_completion(
         raise AIProviderExhausted("openrouter_paid disabled")
 
     last_error: Exception | None = None
-    for model in (OPENROUTER_PAID_MISTRAL_MODEL, OPENROUTER_PAID_PHI4_MODEL):
+    # Phi-4 FIRST (2026-07-19, latency pass): measured live at 8.1-8.5s per
+    # recipe vs Mistral's 17.4s average on the identical contract — AND it
+    # was already the benchmark's validity winner (95.8% vs 91.7%, see
+    # benchmarks/results/). The original Mistral-first order carried no
+    # data-backed rationale; this one does. Mistral stays as the same-
+    # provider fallback.
+    for model in (OPENROUTER_PAID_PHI4_MODEL, OPENROUTER_PAID_MISTRAL_MODEL):
         start = time.monotonic()
         try:
             result = await _call_openrouter_paid(messages, tools, model=model)
@@ -307,7 +380,9 @@ async def deepinfra_completion(
         raise AIProviderExhausted("deepinfra disabled")
 
     last_error: Exception | None = None
-    for model in (DEEPINFRA_MISTRAL_MODEL, DEEPINFRA_PHI4_MODEL):
+    # Same Phi-4-first ordering as openrouter_paid_completion above, same
+    # rationale (measured 10.8-11.5s vs 15.8-23s here on DeepInfra).
+    for model in (DEEPINFRA_PHI4_MODEL, DEEPINFRA_MISTRAL_MODEL):
         start = time.monotonic()
         try:
             result = await _call_deepinfra(messages, tools, model=model)
@@ -330,15 +405,17 @@ async def chat_completion(
     recipe_id: str | None = None,
     generation_request_id: str | None = None,
 ) -> tuple[dict, str]:
-    """Tries paid OpenRouter (Mistral Small 24B, then Phi-4) first, then
+    """Tries paid OpenRouter (Phi-4, then Mistral Small) first, then
     DeepInfra (same 2 models) — replaces the Groq/OpenRouter-free waterfall
     (2026-07-16): a same-day benchmark (backend/benchmarks/) found both free
     tiers unreliable under real concurrent load (Groq hit its own daily
     token cap from testing, OpenRouter free-tier had a 90%+ error rate the
     same day), while Mistral Small 24B/Phi-4 scored 91.7%/95.8% valid on
     mesa's real contract across two independently-verified paid providers.
-    OpenRouter goes first since there's a real prepaid credit balance to
-    spend down before DeepInfra becomes pure metered billing.
+    Phi-4 goes first within each provider (2026-07-19 latency pass: ~2x
+    faster, also the validity winner). OpenRouter goes first since there's a
+    real prepaid credit balance to spend down before DeepInfra becomes pure
+    metered billing.
 
     _call_groq/_call_openrouter/groq_only_completion/openrouter_only_completion
     are unchanged and still used directly by the golden-set quality test —
@@ -487,9 +564,12 @@ async def run_tool_use_loop(
     """Multi-turn tool-use loop. Ends when the model calls `final_tool_name`.
     Guardrail 19(b): a bad/unknown tool call gets a corrective tool_result
     instead of crashing, up to MAX_CORRECTIVE_RETRIES before giving up.
-    completion_fn defaults to the Groq-then-OpenRouter chat_completion, but
-    the async steps-generation worker passes openrouter_only_completion
-    instead (see there for why).
+    completion_fn defaults to chat_completion (the paid OpenRouter-then-
+    DeepInfra waterfall) — every live call site uses this default now
+    (2026-07-20: stub_expansion.py's Groq override was dropped along with
+    the nightly pool_warmer job that was its only reason to use a free
+    tier). groq_only_completion/openrouter_only_completion still exist for
+    the golden-set quality test only, never passed here in production.
 
     Returns (parsed_arguments, provider) — provider is whichever one
     answered the LAST turn (the one that actually produced final_tool_name);

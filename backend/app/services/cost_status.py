@@ -41,7 +41,19 @@ MONTHLY_DEEPINFRA_CAP_USD = 5.0
 # cloudflare_text cap (user's explicit choice over a more conservative
 # number). Real measurement, but still just one sample — revisit if a second
 # controlled test disagrees.
-CLOUDFLARE_IMAGE_DAILY_CAP = 58
+#
+# 2026-07-20 — recalibrated for the flux-1-schnell -> flux-2-klein-9b switch
+# (see cloudflare.py): klein-9b is a Black Forest Labs PARTNER model, not a
+# first-party Cloudflare one, and burns through the daily free allocation
+# much faster — confirmed live: 4 real image generations (200s) exhausted
+# the entire 10,000 Neuron/day budget outright (the 5th attempt got "you
+# have used up your daily free allocation," Cloudflare error code 4006).
+# That implies ~2,500 Neurons/image, ~14x flux-1-schnell's 173. 10,000 ÷
+# 2,500 ≈ 4 — capped at 3 here for margin, since this is one day's rough
+# aggregate, not the clean isolated single-call measurement the 173 number
+# above was. Revisit once a controlled single-call test is possible (the
+# quota needs to reset first) — same rigor this constant originally had.
+CLOUDFLARE_IMAGE_DAILY_CAP = 3
 
 
 async def _get_flag(key: str) -> bool:

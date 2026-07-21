@@ -67,9 +67,20 @@ async def expand_stub(stub: dict) -> dict:
 
     last_error: Exception | None = None
     result = None
-    provider = "openrouter"
+    provider = "chat_completion"
     for attempt in range(MAX_EXPANSION_ATTEMPTS):
         try:
+            # 2026-07-20 — back on the default paid chat_completion waterfall
+            # (Phi-4 -> Mistral 3.2, same as fresh_generation.py's live path).
+            # Groq/OpenRouter-free are dropped entirely now (pool_warmer's
+            # nightly job — the only reason this ran on a free tier at all —
+            # was removed the same day): OpenRouter free is a random
+            # multi-model router with a documented 90%+ error rate under
+            # load, and Groq's own quality audit surfaced real misses too.
+            # expand_stub is called from generate_recipes.py's live path
+            # (expanding a pool stub a real user's search just surfaced), so
+            # it should get the same reliability/quality bar as any other
+            # live-facing generation, not a discount-tier model.
             result, provider = await ai_client.run_tool_use_loop(
                 system_prompt,
                 user_prompt,
