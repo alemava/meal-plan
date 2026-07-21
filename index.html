@@ -221,6 +221,7 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .sug-x{position:absolute;top:8px;right:10px;background:rgba(255,255,255,.92);border:none;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--mut);cursor:pointer}
 .sug-body{padding:14px 16px 16px}
 .sug-ttl{font-size:1.02rem;font-weight:700;line-height:1.3}
+.sug-desc{font-size:.8rem;color:var(--mut);line-height:1.4;margin-top:3px}
 .sug-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 9px}
 .sug-chip{white-space:nowrap;background:var(--srf);border-radius:999px;padding:4px 10px;font-size:.72rem;font-weight:600;color:var(--mut)}
 .sug-chip.uses{background:var(--gnb);color:var(--grn);font-weight:700}
@@ -241,10 +242,18 @@ body.cooking-mode{padding-bottom:0!important;min-height:0}
 .sug-day .nm{display:block}
 .sug-day.sel{background:var(--grn);color:#fff;font-weight:700}
 .sug-day.taken{color:var(--brd2);cursor:default}
-.sug-vars{margin-top:10px;display:flex;flex-direction:column;gap:6px}
-.sug-var-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.sug-var-day{font-size:.78rem;font-weight:600;color:var(--mut)}
-.sug-var-row select{font-size:.78rem;border-radius:8px;border:1px solid var(--brd2);background:var(--srf);color:var(--txt);padding:5px 8px}
+/* Chip-cluster variation picker (Claude Design direction 1b, 2026-07-22 —
+   replaces the plain <select> dropdown). One day-group per assigned day,
+   each a labelled row of tap-to-fill chips that wrap freely — scales from
+   2 up to many variations without cramping, unlike a fixed-width dropdown. */
+.sug-vars{margin-top:10px}
+.sug-var-group{margin-bottom:11px}
+.sug-var-group:last-child{margin-bottom:0}
+.sug-var-daylbl{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--hnt);margin:0 0 6px}
+.sug-var-meta{font-size:.7rem;font-weight:600;text-transform:none;letter-spacing:normal;color:var(--mut);white-space:nowrap}
+.sug-var-chips{display:flex;flex-wrap:wrap;gap:6px}
+.sug-var-chip{border-radius:999px;padding:5px 12px;font-size:.74rem;cursor:pointer;border:1.5px solid var(--acb);background:var(--wht);color:var(--acd);font-weight:600}
+.sug-var-chip.sel{border-color:var(--acc);background:var(--acc);color:#fff;font-weight:700}
 
 .sug-skel{background:var(--wht);border:1px dashed var(--brd2);border-radius:18px;padding:14px;display:flex;align-items:center;gap:12px;margin-bottom:12px}
 .sug-skel-thumb{width:46px;height:46px;border-radius:12px;flex-shrink:0;background:linear-gradient(90deg,var(--srf) 25%,var(--brd) 37%,var(--srf) 63%);background-size:400% 100%;animation:sugShimmer 1.4s infinite linear}
@@ -1856,6 +1865,7 @@ function showGenerateView() {
   if (!G.genCravings) G.genCravings = [];
   if (G.genNote == null) G.genNote = '';
   if (!G.genAssignments) G.genAssignments = {};
+  if (!G.genDefaultVariation) G.genDefaultVariation = {};
   if (!G.genExpanded) G.genExpanded = {};
   if (G.genDismissMenu === undefined) G.genDismissMenu = null;
   if (G.genBusyNote === undefined) G.genBusyNote = false;
@@ -1993,6 +2003,7 @@ function renderGenScreenCravings() {
 function genAdjustAndRegenerate() {
   G.genResults = {};
   G.genAssignments = {};
+  G.genDefaultVariation = {};
   G.genProgress = null;
   G.genActiveJobId = null;
   localStorage.removeItem('mesa-last-gen-job');
@@ -2041,11 +2052,28 @@ function applyGenerationResult(data) {
     }).catch(function(){});
   }
   var pooled = {};
+  var slotCounts = {};
   (data.slots || []).forEach(function(slot) {
     if (!pooled[slot.meal_type]) pooled[slot.meal_type] = [];
     (slot.options || []).forEach(function(opt) { pooled[slot.meal_type].push(opt); });
+    slotCounts[slot.meal_type] = (slotCounts[slot.meal_type] || 0) + 1;
   });
   G.genResults = pooled;
+  // 2026-07-22, real bug found live: G.genCounts is never persisted (only
+  // genResults/genActiveJobId are, via localStorage's job pointer) — on a
+  // fresh session (new tab/reopen) it starts at showGenerateView's default
+  // {breakfast:0, lunch:0, dinner:2}. Resuming an in-progress/finished job
+  // then restored the REAL breakfast/lunch options into genResults just
+  // fine, but renderGenerateResults hides a section entirely whenever
+  // G.genCounts[mt] is 0 — so a resumed batch with real breakfast/lunch
+  // options sat hidden, "only showing the dinners" the default implied.
+  // Syncing counts up (never down) from what actually came back keeps a
+  // section visible whenever it has real data, regardless of how this
+  // session's G.genCounts got initialized.
+  if (!G.genCounts) G.genCounts = {breakfast: 0, lunch: 0, dinner: 0};
+  GEN_MEAL_TYPES.forEach(function(mt) {
+    G.genCounts[mt] = Math.max(G.genCounts[mt] || 0, slotCounts[mt] || 0);
+  });
   G.genProgress = (typeof data.completed_slots === 'number' && typeof data.total_slots === 'number')
     ? {completed: data.completed_slots, total: data.total_slots}
     : null;
@@ -2270,6 +2298,7 @@ async function runGenerateRecipes() {
   // day-picks the user already made on an earlier partial update).
   G.genResults = {};
   G.genAssignments = {};
+  G.genDefaultVariation = {};
   G.genProgress = null;
   G.genBusyNote = false;
   G.genDiscarded = new Set();
@@ -2452,22 +2481,60 @@ function renderGenerateResults() {
       var photoInner = opt.image_url ? '' : '<span class="ph-emoji">🍽</span>';
       var badgeCls = opt.status === 'complete' ? 'pool' : 'new';
       var badgeTxt = opt.status === 'complete' ? 'From your pool' : 'New idea';
+      // Moved up (was declared after the chips block) so the chips below can
+      // reflect whichever variation is actually selected right now — see
+      // activeVariation. Card-level state, same read every render.
+      var assignments = G.genAssignments[opt.id] || [];
+
+      // 2026-07-22, user-requested: kcal/time chips must update the moment a
+      // variation is picked, not just after confirming — previously these
+      // always read straight from opt.time/opt.kcal (the BASE recipe),
+      // ignoring which variation was actually selected. "Primary" variation
+      // for this purpose is the first assigned day's pick (or, before any
+      // day is picked, the pending default from the chip picker below) —
+      // a card only has one header, so if different days end up with
+      // different variations, the header follows the first one, same as
+      // the variation picker's "pending" concept already does before a day
+      // exists at all.
+      // Shared by the header chips below AND by each per-day variation-group
+      // row (2026-07-22, user-requested): given a variation name ('' =
+      // Original), returns that variation's own time/kcal if it overrides
+      // them, else falls back to the base recipe's.
+      // Ingredients delta (2026-07-22, user-requested): same add/remove
+      // application hydrateMeals already does for a CONFIRMED meal (and
+      // select_recipe.py's _apply_variation does server-side at selection
+      // time) — mirrored here so the still-unconfirmed suggestion card is
+      // honest too, not just the eventual week view.
+      var variationMeta = function(name) {
+        var v = name ? (opt.variations || []).find(function(x) { return x.name === name; }) : null;
+        var ingredients = opt.ingredients || [];
+        if (v) {
+          var removedNames = new Set((v.remove || []).map(function(n) { return n.toLowerCase(); }));
+          ingredients = ingredients.filter(function(ing) { return !removedNames.has((ing.name || '').toLowerCase()); }).concat(v.add || []);
+        }
+        return {time: (v && v.time) || opt.time, kcal: (v && v.kcal) || opt.kcal, ingredients: ingredients};
+      };
+      var activeVariationName = assignments.length ? (assignments[0].variation || '') : (G.genDefaultVariation[opt.id] || '');
+      var activeMeta = variationMeta(activeVariationName);
+      var displayTime = activeMeta.time;
+      var displayKcal = activeMeta.kcal;
+
       var chips = [];
-      if (opt.time) chips.push('<span class="sug-chip">⏱ ' + esc(opt.time) + '</span>');
-      // opt.kcal is the TOTAL for the whole recipe as written, at base_serves
+      if (displayTime) chips.push('<span class="sug-chip">⏱ ' + esc(displayTime) + '</span>');
+      // displayKcal is the TOTAL for the whole recipe as written, at base_serves
       // (same backend convention as recipes.kcal elsewhere) — every other kcal
       // display in the app (confirmed recipe, shopping list, favourites) shows
       // per-person and labels it so; this card was the one place still
       // showing the raw total unlabeled (real bug found live: "2450 kcal"
       // read as one absurd serving instead of ~1225/person for 2).
-      if (opt.kcal) {
-        var perPersonKcal = Math.round(opt.kcal / (opt.base_serves || 2));
+      if (displayKcal) {
+        var perPersonKcal = Math.round(displayKcal / (opt.base_serves || 2));
         chips.push('<span class="sug-chip">🔥 ' + esc(perPersonKcal) + ' kcal/person</span>');
       }
       var usesLabel = genPantryMatchLabel(opt);
       if (usesLabel) chips.push('<span class="sug-chip uses">' + esc(usesLabel) + '</span>');
 
-      var ings = opt.ingredients || [];
+      var ings = activeMeta.ingredients;
       var expanded = !!G.genExpanded[opt.id];
       var ingHtml = '';
       if (ings.length) {
@@ -2483,7 +2550,6 @@ function renderGenerateResults() {
         }
       }
 
-      var assignments = G.genAssignments[opt.id] || [];
       var dismissStrip = (G.genDismissMenu === opt.id)
         ? '<div class="sug-dismiss">'
           + '<div class="sug-dismiss-txt">Not your thing? mesa won\'t suggest it again.</div>'
@@ -2505,23 +2571,73 @@ function renderGenerateResults() {
       var pickerBlock = '<div class="slbl" style="margin:12px 0 7px">Cook it on…</div><div class="sug-days">' + dayPills(opt, mt) + '</div>';
 
       // Variations (P3, 2026-07-19; extended same day beyond breakfast-only
-      // to any meal type — e.g. rice vs noodles alongside a stir-fry): one
-      // compact row per SELECTED day, only when this option actually
-      // carries variations — lets a repeated breakfast vary (different
-      // nuts/fruit/toast toppings) or a lunch/dinner offer a genuine
-      // accompaniment choice, instead of being identical every time.
+      // to any meal type — e.g. rice vs noodles alongside a stir-fry): lets
+      // a repeated breakfast vary (different nuts/fruit/toast toppings) or
+      // a lunch/dinner offer a genuine accompaniment choice, instead of
+      // being identical every time.
+      // Chip-cluster picker (Claude Design direction 1b, 2026-07-22 —
+      // replaced the old plain <select> per day, which was the one
+      // undesigned control on this card and hid its options until tapped).
+      // Terracotta (--acc) selected state deliberately distinct from the
+      // day picker's sage (--grn) selected state, so "which day" and
+      // "which variation" read as two separate decisions.
+      //
+      // 2026-07-22, user-requested: shown from the very start (as soon as
+      // the card has variations at all), not only once a day is picked —
+      // before, picking a preference required assigning a day first, which
+      // read as the variation choice being gated behind/dependent on the
+      // day choice. With no day picked yet, a single undated row lets the
+      // user set a preference in advance; G.genDefaultVariation remembers
+      // it so the day(s) picked afterward start pre-set to it (see
+      // genToggleDay). Once ≥1 day is picked, one labelled row per day
+      // takes over (each day can still diverge independently).
+      var varChoices = (opt.variations || []).length
+        ? [{name: '', label: 'Original'}].concat(opt.variations)
+        : [];
       var variationsBlock = '';
-      if ((opt.variations || []).length && assignments.length) {
-        variationsBlock = '<div class="sug-vars">' + assignments.map(function(a) {
-          var current = a.variation || '';
-          var opts2 = ['<option value=""' + (current === '' ? ' selected' : '') + '>Original</option>']
-            .concat((opt.variations || []).map(function(v) {
-              return '<option value="' + esc(v.name) + '"' + (current === v.name ? ' selected' : '') + '>' + esc(v.name) + '</option>';
-            }));
-          return '<div class="sug-var-row"><span class="sug-var-day">' + esc(_CODE_TO_DAY[a.day]) + '</span>'
-            + '<select onclick="event.stopPropagation()" onchange="event.stopPropagation();genSetVariation(\'' + esc(opt.id) + '\',\'' + a.day + '\',this.value)">'
-            + opts2.join('') + '</select></div>';
-        }).join('') + '</div>';
+      if (varChoices.length) {
+        var rows;
+        if (assignments.length) {
+          rows = assignments.map(function(a) {
+            var current = a.variation || '';
+            var varChipsHtml = varChoices.map(function(v) {
+              var sel = current === (v.name || '');
+              return '<button class="sug-var-chip' + (sel ? ' sel' : '') + '" onclick="event.stopPropagation();genSetVariation(\'' + esc(opt.id) + '\',\'' + a.day + '\',\'' + esc(v.name || '') + '\')">' + esc(v.label || v.name) + '</button>';
+            }).join('');
+            // 2026-07-22, user-requested: this day's OWN time/kcal, next to
+            // its day label — only shown once ≥2 days are assigned, since
+            // that's the only case where days can actually diverge; with a
+            // single day the header chip (above, under the photo) already
+            // shows the same number, so repeating it here would be
+            // redundant.
+            var rowMeta = variationMeta(current);
+            var rowMetaHtml = (assignments.length > 1 && (rowMeta.time || rowMeta.kcal))
+              ? '<span class="sug-var-meta">'
+                + (rowMeta.time ? '⏱ ' + esc(rowMeta.time) : '')
+                + (rowMeta.time && rowMeta.kcal ? ' · ' : '')
+                + (rowMeta.kcal ? '🔥 ' + esc(Math.round(rowMeta.kcal / (opt.base_serves || 2))) + ' kcal' : '')
+                + '</span>'
+              : '';
+            // 2026-07-22, user-requested: the day name itself is also only
+            // shown once ≥2 days are assigned — with a single day there's
+            // nothing to distinguish it from, so the label is dropped
+            // entirely (not just left empty) rather than showing a lone
+            // "Monday" with nothing to contrast it against.
+            var daylblHtml = assignments.length > 1
+              ? '<div class="sug-var-daylbl">' + esc(_CODE_TO_DAY[a.day]) + rowMetaHtml + '</div>'
+              : '';
+            return '<div class="sug-var-group">' + daylblHtml
+              + '<div class="sug-var-chips">' + varChipsHtml + '</div></div>';
+          });
+        } else {
+          var pending = G.genDefaultVariation[opt.id] || '';
+          var varChipsHtml = varChoices.map(function(v) {
+            var sel = pending === (v.name || '');
+            return '<button class="sug-var-chip' + (sel ? ' sel' : '') + '" onclick="event.stopPropagation();genSetVariation(\'' + esc(opt.id) + '\',null,\'' + esc(v.name || '') + '\')">' + esc(v.label || v.name) + '</button>';
+          }).join('');
+          rows = ['<div class="sug-var-group"><div class="sug-var-chips">' + varChipsHtml + '</div></div>'];
+        }
+        variationsBlock = '<div class="slbl" style="margin:14px 0 8px">Variation</div><div class="sug-vars">' + rows.join('') + '</div>';
       }
 
       return '<div class="sug-card">'
@@ -2532,6 +2648,7 @@ function renderGenerateResults() {
         + dismissStrip
         + '<div class="sug-body">'
         + '<div class="sug-ttl">' + esc(opt.title) + '</div>'
+        + (opt.brief_description ? '<div class="sug-desc">' + esc(opt.brief_description) + '</div>' : '')
         + (chips.length ? '<div class="sug-chips">' + chips.join('') + '</div>' : '')
         + ingHtml
         + pickerBlock
@@ -2596,6 +2713,14 @@ function genDayTaken(day, mealType, excludeOptId) {
 // (P3, 2026-07-19) — "" means the original/base recipe, stored as undefined
 // on the assignment (never sent as an empty-string variation name).
 function genSetVariation(optId, day, variationName) {
+  // day === null: no day picked yet for this option — remember the
+  // preference so it seeds whichever day(s) get picked afterward (see
+  // genToggleDay) instead of requiring a day pick first.
+  if (day === null) {
+    G.genDefaultVariation[optId] = variationName || undefined;
+    renderGenerateResults();
+    return;
+  }
   var arr = G.genAssignments[optId] || [];
   var entry = arr.find(function(a) { return a.day === day; });
   if (!entry) return;
@@ -2622,7 +2747,10 @@ function genToggleDay(optId, day, mealType) {
   // a dinner, they should be able to cook it twice in the same week. Always
   // adds alongside existing picks; genDayTaken above already prevents two
   // DIFFERENT options claiming the same (day, mealType) slot.
-  G.genAssignments[optId] = arr.concat([{day: day, mealType: mealType}]);
+  // Seeds from genDefaultVariation (2026-07-22) — a preference picked
+  // before any day was assigned carries over to the first day picked
+  // afterward, rather than resetting to "Original".
+  G.genAssignments[optId] = arr.concat([{day: day, mealType: mealType, variation: G.genDefaultVariation[optId]}]);
   renderGenerateResults();
 }
 
@@ -2699,6 +2827,7 @@ async function confirmGeneratedMenu() {
   // other selection already lands on. No new "week" screen gets built.
   G.genResults = {};
   G.genAssignments = {};
+  G.genDefaultVariation = {};
   G.genProgress = null;
   G.genScreen = 'counts';
   G.genActiveJobId = null;
