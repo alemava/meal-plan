@@ -180,7 +180,20 @@ async def check_cost_status() -> dict:
     elif not deepinfra_over_cap and deepinfra_currently_disabled:
         await _set_flag("image_backstop_disabled", False)
 
-    if image_health["sustained"]:
+    # 2026-08-06, real bug found live: this alert had no transition guard,
+    # unlike the two above — it fired on EVERY cost-status-check run (every
+    # 6h = up to 4x/day) for as long as `sustained` stayed true, which it
+    # does for up to 30 days after the LAST limit-hit day (limit_hit_days_
+    # last_30 is a rolling 30-day count, not "is this happening right now").
+    # A user reported getting the "used up your Cloudflare allowance" email
+    # several times a day, including days they never touched the app — root
+    # cause was 5 limit-hit days left over from deliberate quota-exhaustion
+    # testing during development, which kept `sustained=True` mechanically
+    # for weeks with zero real current problem. Same fix as the other two
+    # alerts: only send on the false->true transition, not on every check.
+    image_sustained_currently_alerted = await _get_flag("image_chain_sustained_alerted")
+    if image_health["sustained"] and not image_sustained_currently_alerted:
+        await _set_flag("image_chain_sustained_alerted", True)
         await resend_client.send_email(
             "mesa: image provider chain under sustained load",
             f"<p>{image_health['limit_hit_days_last_30']} limit-hit days in the last 30, "
@@ -189,6 +202,8 @@ async def check_cost_status() -> dict:
             "<p>DeepInfra (the paid backstop) may itself be capped or failing — check "
             "the monthly spend cap and DeepInfra's own status.</p>",
         )
+    elif not image_health["sustained"] and image_sustained_currently_alerted:
+        await _set_flag("image_chain_sustained_alerted", False)
 
     return {
         "ai_provider": settings.ai_provider,
